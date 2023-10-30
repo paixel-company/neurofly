@@ -1,0 +1,14 @@
+.venv
+__pycache__/
+*.py[cod]
+*$py.class
+venv
+.eggs
+.pytest_cache
+*.egg-info
+.DS_Store
+dist
+build
+rr30a_s0_ch2.tif
+__pythran__/
+.coverage
