@@ -1,9 +1,0 @@
-README.md
-pyproject.toml
-setup.cfg
-src/ntools/__init__.py
-src/ntools/neuron.py
-src/ntools.egg-info/PKG-INFO
-src/ntools.egg-info/SOURCES.txt
-src/ntools.egg-info/dependency_links.txt
-src/ntools.egg-info/top_level.txt
