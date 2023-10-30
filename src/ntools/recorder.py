@@ -10,7 +10,7 @@ import time
 
 
 class Recorder:
-    def __init__(self, viewer = None, inter_steps = 15):
+    def __init__(self, viewer = None):
         if viewer is None:
             raise TypeError('You need to pass a napari viewer for the myviewer argument')
         else:
