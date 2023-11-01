@@ -1,5 +1,6 @@
 import numpy as np
 from brightest_path_lib.algorithm import NBAStarSearch
+import dijkstra3d as djk
 
 class PathFinder:
     def __init__(self, image, viewer = None):
@@ -11,13 +12,13 @@ class PathFinder:
             self.start_layer = self.viewer.add_points(ndim=3,face_color='cyan',size=2,name='start point',edge_color='black',shading='spherical')
             self.goal_layer = self.viewer.add_points(ndim=3,face_color='red',size=2,name='goal point',edge_color='black',shading='spherical')
             self.path_layer = self.viewer.add_points(ndim=3,face_color='green',size=1,name='goal point',edge_color='black',shading='spherical')
-
         #establish key bindings
         self.add_callback()
 
 
     def add_callback(self):
-        self.viewer.bind_key('f', self.find_path)
+        self.viewer.bind_key('r', self.find_path)
+        self.viewer.bind_key('f', self.find_simple_path)
         self.image_layer.mouse_double_click_callbacks.append(self.on_double_click)
 
 
@@ -25,6 +26,15 @@ class PathFinder:
         sa = NBAStarSearch(self.image_layer.data, start_point=self.start_layer.data[0], goal_point=self.goal_layer.data[0])
         path = sa.search()
         self.path_layer.data = path
+
+
+
+    def find_simple_path(self,viewer):
+        field = self.image_layer.data 
+        field = (field.max()-field)/(field.max()-field.min())
+        path = djk.dijkstra(field, source=self.start_layer.data[0], target=self.goal_layer.data[0], bidirectional=True,connectivity=26).tolist()
+        self.path_layer.data = path
+
 
 
     def on_double_click(self,layer,event):
@@ -63,3 +73,4 @@ class PathFinder:
     def clamp_point_to_bbox(self,point: np.ndarray, bbox: np.ndarray):
         clamped_point = np.clip(point, bbox[:, 0], bbox[:, 1])
         return clamped_point
+

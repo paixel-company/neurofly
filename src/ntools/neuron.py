@@ -202,7 +202,7 @@ class Neuron():
             return None
 
 
-    def _get_ones_streaks(self,L,min_size=3):
+    def _get_repeated_ones(self,L,min_size=3):
         breaks = [i for i,(a,b) in enumerate(zip(L,L[1:]),1) if a!=b]
         ran = [[s,e-1] for s,e in zip([0]+breaks,breaks+[len(L)])
                             if e-s>=min_size and L[s]]
@@ -228,7 +228,7 @@ class Neuron():
                 c_in = np.logical_and(x_in,y_in)
                 c_in = np.logical_and(c_in,z_in).tolist()
                 # -----------
-                segments_within_roi = self._get_ones_streaks(c_in,min_size=min_len)
+                segments_within_roi = self._get_repeated_ones(c_in,min_size=min_len)
                 if segments_within_roi is not None:
                     for seg in segments_within_roi:
                         nodes_segment = list(map(lambda i: nodes[i], seg))
@@ -415,6 +415,40 @@ def get_branches(neuron_files,roi,ids=[],scale=1):
     return branches
 
 
+def get_repeated_ones(L,min_size=3):
+    breaks = [i for i,(a,b) in enumerate(zip(L,L[1:]),1) if a!=b]
+    ran = [[s,e-1] for s,e in zip([0]+breaks,breaks+[len(L)])
+                        if e-s>=min_size and L[s]]
+    if(len(ran))>=1:
+        return [np.arange(s,e+1).tolist() for (s,e) in ran]
+    else:
+        return None
+
+
+def get_segs_within_roi(all_segs,roi):
+    [ox,oy,oz]=roi[0:3]
+    [ex,ey,ez]=[i+j for i,j in zip(roi[0:3],roi[3:6])]
+    segs_in = []
+    for segs_in_neuron in all_segs:
+        segs = []
+        for segment in segs_in_neuron:
+            coords = np.array([point['pos'] for point in segment])
+            # some ugly code
+            x_in = np.logical_and(coords[:,0]>ox,coords[:,0]<ex)
+            y_in = np.logical_and(coords[:,1]>oy,coords[:,1]<ey)
+            z_in = np.logical_and(coords[:,2]>oz,coords[:,2]<ez)
+            c_in = np.logical_and(x_in,y_in)
+            c_in = np.logical_and(c_in,z_in).tolist()
+            # -----------
+            segments_within_roi = get_repeated_ones(c_in,min_size=2)
+            if segments_within_roi is not None:
+                for seg in segments_within_roi:
+                    nodes_segment = list(map(lambda i: segment[i], seg))
+                    segs.append(nodes_segment)
+        if len(segs)!=0:
+            segs_in.append(segs)
+    return segs_in
+
 
 def get_points_and_vecs(segs,point_roi):
     vectors = []
@@ -430,7 +464,7 @@ def get_points_and_vecs(segs,point_roi):
         for node in seg:
             points.append([i-j for i,j in zip(node['pos'],point_roi[0:3])])
 
-    return np.array(vectors),np.array(points)
+    return np.array(points),np.array(vectors)
 
 
 def save_segs(segs,path):
