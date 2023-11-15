@@ -123,7 +123,7 @@ def get_points(image,seger,roi,move_steps=3):
     mask = seger.get_fg(image,thres=100)
     label_image, num_of_labels = measure.label(mask,return_num=True)
     label_image = label_image.astype(bool)
-    mask = morphology.remove_small_objects(label_image, min_size=3, connectivity=3)
+    mask = morphology.remove_small_objects(label_image, min_size=2, connectivity=3)
     mask = mask >= 1
     masked_image = image*mask
     points = peak_local_max(masked_image, min_distance=1.5, footprint=ball(1), exclude_border=1)

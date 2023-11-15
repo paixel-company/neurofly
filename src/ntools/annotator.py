@@ -52,7 +52,8 @@ class VolumeAnnotator:
 
 
     def get_point_under_cursor(self, layer, event):
-        if event.button == 1:
+        if event.button == 2:
+            # remove all connected points
             index = layer.get_value(
                 event.position,
                 view_direction=event.view_direction,
@@ -61,7 +62,19 @@ class VolumeAnnotator:
             )
             if index is not None:
                 points = layer.data
-                filtered = self.remove_connected_points(points,2,index)
+                filtered = self.remove_connected_points(points,1.8,index)
+                layer.data = filtered
+        if event.button == 1:
+            # remove nearby points
+            index = layer.get_value(
+                event.position,
+                view_direction=event.view_direction,
+                dims_displayed=event.dims_displayed,
+                world=True,
+            )
+            if index is not None:
+                points = layer.data
+                filtered = self.remove_nearby_points(points,10,index)
                 layer.data = filtered
 
 
@@ -111,6 +124,15 @@ class VolumeAnnotator:
         filtered_points = points[labels != label_to_remove]
         return filtered_points
     
+    def remove_nearby_points(self, points, dis, point_index):
+        c_point = points[point_index]
+        distances = np.linalg.norm(points-c_point, axis=1)
+        # indices = np.argsort(distances)
+        indices_to_keep = distances > dis
+        filtered_points = points[indices_to_keep]
+        return filtered_points
+    
+
     def save_result(self,viewer):
         # image_name = filedialog.asksaveasfilename()
         all_files = os.listdir(self.save_dir)
@@ -118,18 +140,19 @@ class VolumeAnnotator:
         tif_files = [file for file in all_files if file.endswith('.tif')]
         next_image_number = len(tif_files)//2 + 1
         image_name = f'img_{next_image_number}.tif'
-        mask_path = os.path.join(self.save_dir, mask_name)
+        image_name = os.path.join(self.save_dir, image_name)
 
         image = self.image_layer.data
         imwrite(image_name,image)
 
         coordinates = self.path_layer.data
-        mask = np.zeros(image.shape, dtype=int)
+        mask = np.zeros(image.shape, dtype=np.uint8)
         mask[coordinates[:, 0], coordinates[:, 1], coordinates[:, 2]] = 1
-        mask = zoom(mask,(2,6,2),mode='nearest').astype(np.uint8)
-        mask = morphology.binary_dilation(mask, footprint=ball(1))
-        mask = skeletonize(mask)
-        mask = morphology.binary_dilation(mask, footprint=ball(1))
+
+        # mask = zoom(mask,(2,6,2),mode='nearest').astype(np.uint8)
+        # mask = morphology.binary_dilation(mask, footprint=ball(1))
+        # mask = skeletonize(mask)
+        # mask = morphology.binary_dilation(mask, footprint=ball(1))
 
         directory, filename = os.path.split(image_name)
 

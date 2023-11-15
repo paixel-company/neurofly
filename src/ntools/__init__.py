@@ -5,5 +5,5 @@ from .segment import Seger, get_points
 from .recorder import Recorder
 from .path_finder import PathFinder
 from .annotator import VolumeAnnotator
-from .vis import show_segs_and_image, show_skels_and_image
+from .vis import show_segs_and_image, show_skels_and_image, show_segs_as_instances
 
