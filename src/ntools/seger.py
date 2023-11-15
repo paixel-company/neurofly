@@ -124,7 +124,7 @@ class Seger():
             self.device = device
         ckpt = torch.load(ckpt_path, map_location='cpu')
         model.load_state_dict({k.replace('module.',''):v for k,v in ckpt['model'].items()})
-        model.to(device)
+        model.to(self.device)
         model.eval()
         self.model = model
 
@@ -146,8 +146,8 @@ class Seger():
         return img
     
     def get_mask(self,img,thres=None):
-        img_in = self.preprocess(img)
-        tensor_out = self.model(img_in)
+        img_in = self.preprocess(img).to(self.device)
+        tensor_out = self.model(img_in).cpu()
         prob = tensor_out.squeeze(0).squeeze(0)
         if thres==None:
             return porb.numpy()
