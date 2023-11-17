@@ -141,4 +141,3 @@ def get_points(image,seger,roi,move_steps=3):
     points = np.array([[coord[0]+offset[0],coord[1]+offset[1],coord[2]+offset[2]] for coord in points])
     # return points[sampled_points], points[sampled_out]
     return points.tolist(), intensity.tolist()
-

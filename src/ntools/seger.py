@@ -1,8 +1,13 @@
 import torch
 import torch.nn as nn
 import functools
+import numpy as np
 from scipy.ndimage import median_filter
+from scipy.spatial.distance import cdist
 from skimage.morphology import ball
+from skimage.feature import peak_local_max
+from skimage.morphology import skeletonize
+from skimage.measure import label, regionprops
 
 
 # ==========
@@ -150,16 +155,43 @@ class Seger():
         tensor_out = self.model(img_in).cpu()
         prob = tensor_out.squeeze(0).squeeze(0)
         if thres==None:
-            return porb.numpy()
+            return prob.detach().numpy()
         else:
             prob[prob>=thres]=1
             prob[prob<thres]=0
-            return prob
+            return prob.detach().numpy()
+
+
+
+def get_points(image,seger,roi):
+    mask = seger.get_mask(image,thres=0.8)
+    skel = skeletonize(mask)
+    labels = label(skel, connectivity=3)
+    print(labels.shape)
+    regions = regionprops(labels)
+    for props in regions:
+        print(props.centroid)
+        print(props.bbox)
+        print(props.area)
+
+
+    # offset = roi[0:3]
+    # points = np.array([[coord[0]+offset[0],coord[1]+offset[1],coord[2]+offset[2]] for coord in points])
+    return skel
 
 
 if __name__ == '__main__':
     import numpy as np
+    from ntools.read_zarr import Image
+    image_path = '/Users/bean/workspace/data/axon.zarr'
+    roi = [47690, 34158, 39542] + [64,64,64]
+    image = Image(image_path)
+    img = image.from_roi(roi)
     seger = Seger('src/weights/unet_seg.pth')
-    random_array = np.random.randint(0, 65536, size=(64,64,64), dtype=np.uint16)
-    mask = seger.get_mask(random_array,thres=0.8)
-    print(mask.shape)
+    skel = get_points(img,seger,roi=[0,0,0,0,0,0])
+    import napari
+    viewer = napari.Viewer(ndisplay=3)
+    viewer.add_image(img)
+    viewer.add_image(skel)
+    napari.run()
+

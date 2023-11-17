@@ -123,6 +123,7 @@ class VolumeAnnotator:
         label_to_remove = labels[point_index]
         filtered_points = points[labels != label_to_remove]
         return filtered_points
+
     
     def remove_nearby_points(self, points, dis, point_index):
         c_point = points[point_index]
