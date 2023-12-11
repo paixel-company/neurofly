@@ -1,14 +1,9 @@
 import numpy as np
 import napari
+import json
 import os
 from brightest_path_lib.algorithm import NBAStarSearch
-from scipy.spatial.distance import cdist
-from scipy.sparse.csgraph import connected_components
-from skimage.morphology import skeletonize
-from scipy.ndimage import zoom
-from tifffile import imwrite, imread
-from skimage import morphology, measure
-from skimage.morphology import ball
+from tifffile import imread
 from magicgui import magicgui, widgets
 
 
@@ -19,7 +14,7 @@ class Annotator:
         self.start_layer = self.viewer.add_points(ndim=3,face_color='cyan',size=2,edge_color='black',shading='spherical',name='start')
         self.goal_layer = self.viewer.add_points(ndim=3,face_color='red',size=2,edge_color='black',shading='spherical',name='goal')
         self.path_layer = self.viewer.add_points(ndim=3,face_color='green',size=1,edge_color='black',shading='spherical',name='path')
-        self.labeled_layer = self.viewer.add_points(data=None,ndim=3,size=0.8,edge_color='black',shading='spherical',properties=None,face_colormap='turbo',name='saved labels')
+        self.labeled_layer = self.viewer.add_points(ndim=3,size=0.8,edge_color='black',shading='spherical',face_colormap='turbo',name='saved labels')
         self.labeled_path = []
         self.add_callback()
         napari.run()
@@ -27,18 +22,26 @@ class Annotator:
 
     def add_callback(self):
         self.viewer.bind_key('f', self.find_path)
-        self.viewer.bind_key('r', self.step_forward)
-        # self.viewer.bind_key('s', self.save_result)
+        self.viewer.bind_key('r', self.delete_one_path)
+        self.viewer.bind_key('d', self.delete_current_path)
         self.viewer.bind_key('s', self.save_current_path)
         self.image_layer.mouse_double_click_callbacks.append(self.on_double_click)
         self.path_layer.mouse_drag_callbacks.append(self.get_point_under_cursor)
 
-        self.button1 = widgets.PushButton(text="refresh")
-        self.button1.clicked.connect(self.refresh)
-        self.button2 = widgets.PushButton(text="save results")
-        self.button2.clicked.connect(self.save_result)
+        self.button0 = widgets.PushButton(text="refresh")
+        self.button0.clicked.connect(self.refresh)
+        self.button1 = widgets.PushButton(text="save file")
+        self.button1.clicked.connect(self.save_result)
+        self.button2 = widgets.PushButton(text="save path (s)")
+        self.button2.clicked.connect(self.save_current_path)
+        self.button3 = widgets.PushButton(text="delete current path (d)")
+        self.button3.clicked.connect(self.delete_current_path)
+        self.button4 = widgets.PushButton(text="delete added path (r)")
+        self.button4.clicked.connect(self.delete_one_path)
+        self.button5 = widgets.PushButton(text="find path (f)")
+        self.button5.clicked.connect(self.find_path)
         self.image_path = widgets.FileEdit(label="image_path")
-        self.container = widgets.Container(widgets=[self.image_path, self.button1,self.button2])
+        self.container = widgets.Container(widgets=[self.image_path, self.button0,self.button1,self.button2,self.button3,self.button4,self.button5])
         self.viewer.window.add_dock_widget(self.container, area='right')
     
 
@@ -48,27 +51,60 @@ class Annotator:
         self.labeled_path.append(self.path_layer.data.tolist())
         colors = []
         points = []
-        scolors = [i/len(self.labeled_path) for i in list(range(len(self.labeled_path)+1))]
+        scolors = [i/len(self.labeled_path) for i in list(range(len(self.labeled_path)))]
         for i, seg in enumerate(self.labeled_path):
             seg_color = scolors[i]
             for point in seg:
                 points.append(point)
                 colors.append(seg_color)
+        
+        if colors[-1] == 0:
+            colors[-1] = 1
 
         properties = {
-            'colors': np.array(colors)
+            'colors': np.array(colors,dtype=np.float32)
         }
 
         self.labeled_layer.data = np.array(points)
         self.labeled_layer.properties = properties
-        self.labeled_layer.face_colormap = 'turbo'
         self.labeled_layer.face_color = 'colors'
+        self.labeled_layer.face_colormap = 'turbo'
         self.labeled_layer.selected_data = []
         self.path_layer.data = np.array([])
         self.labeled_layer.refresh()
+        self.start_layer.data = []
+        self.goal_layer.data = []
+        # self.labeled_layer.refresh_colors()
+        
 
-        self.viewer.add_points(data=np.array(points),ndim=3,size=0.8,edge_color='black',shading='spherical',properties=properties,face_colormap='hsv',name='test')
+    def delete_one_path(self,viewer):
+        self.labeled_path = self.labeled_path[:-1]
+        colors = []
+        points = []
+        scolors = [i/len(self.labeled_path) for i in list(range(len(self.labeled_path)))]
+        for i, seg in enumerate(self.labeled_path):
+            seg_color = scolors[i]
+            for point in seg:
+                points.append(point)
+                colors.append(seg_color)
+        
+        if colors[-1] == 0:
+            colors[-1] = 1
 
+        properties = {
+            'colors': np.array(colors,dtype=np.float32)
+        }
+
+        self.labeled_layer.data = np.array(points)
+        self.labeled_layer.properties = properties
+        self.labeled_layer.face_color = 'colors'
+        self.labeled_layer.face_colormap = 'turbo'
+        self.labeled_layer.selected_data = []
+        self.path_layer.data = np.array([])
+        self.labeled_layer.refresh()
+        self.start_layer.data = []
+        self.goal_layer.data = []
+        # self.labeled_layer.refresh_colors()
 
     def refresh(self):
         img = imread(self.image_path.value)
@@ -91,6 +127,11 @@ class Annotator:
         self.path_layer.refresh()
 
 
+    def delete_current_path(self,viewer):
+        self.path_layer.data = []
+        self.path_layer.selected_data = np.array([])
+        self.path_layer.refresh()
+
     def step_forward(self,viewer):
         self.start_layer.data = self.goal_layer.data
         self.goal_layer.data = []
@@ -98,7 +139,6 @@ class Annotator:
 
     def get_point_under_cursor(self, layer, event):
         if event.button == 2:
-            # remove all connected points
             index = layer.get_value(
                 event.position,
                 view_direction=event.view_direction,
@@ -107,8 +147,6 @@ class Annotator:
             )
             if index is not None:
                 points = layer.data
-                filtered = self.remove_connected_points(points,1.8,index)
-                layer.data = filtered
         if event.button == 1:
             # remove nearby points
             index = layer.get_value(
@@ -119,8 +157,6 @@ class Annotator:
             )
             if index is not None:
                 points = layer.data
-                filtered = self.remove_nearby_points(points,10,index)
-                layer.data = filtered
 
 
     def on_double_click(self,layer,event):
@@ -161,48 +197,15 @@ class Annotator:
         return clamped_point
     
 
-    def remove_connected_points(self, points, threshold, point_index):
-        distances = cdist(points, points)
-        adjacency_matrix = distances <= threshold
-        num_components, labels = connected_components(adjacency_matrix, directed=False)
-        label_to_remove = labels[point_index]
-        filtered_points = points[labels != label_to_remove]
-        return filtered_points
-
-    
-    def remove_nearby_points(self, points, dis, point_index):
-        c_point = points[point_index]
-        distances = np.linalg.norm(points-c_point, axis=1)
-        # indices = np.argsort(distances)
-        indices_to_keep = distances > dis
-        filtered_points = points[indices_to_keep]
-        return filtered_points
-    
-
     def save_result(self,viewer):
-        all_files = os.listdir(self.save_dir)
+        image_path = self.image_path.value
+        directory, image_name = os.path.split(image_path)
+        json_name = image_name.replace('.tif','.json')
 
-        tif_files = [file for file in all_files if file.endswith('.tif')]
-        next_image_number = len(tif_files)//2 + 1
-        image_name = f'img_{next_image_number}.tif'
-        image_name = os.path.join(self.save_dir, image_name)
-
-        image = self.image_layer.data
-        imwrite(image_name,image)
-
-        coordinates = self.path_layer.data
-        mask = np.zeros(image.shape, dtype=np.uint8)
-        mask[coordinates[:, 0], coordinates[:, 1], coordinates[:, 2]] = 1
-
-        directory, filename = os.path.split(image_name)
-
-        mask_name = filename.replace('img', 'mask')
-        mask_path = os.path.join(directory, mask_name)
-
-        imwrite(mask_path,mask)
-
-        print(image_name +' saved')
-        print(mask_path +' saved')
+        json_path = os.path.join(directory, json_name)
+        with open(json_path, "w") as json_file:
+            json.dump(self.labeled_path, json_file, indent=4)
+        print(json_path+' saved')
 
 
 if __name__ == '__main__':
