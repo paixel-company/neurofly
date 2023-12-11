@@ -8,61 +8,6 @@ import pathlib
 
 
 
-def show_segs_and_image(segs,image,roi):
-    [x1,y1,z1] = roi[:3]
-    [x2,y2,z2] = [i+j for i,j in zip(roi[:3],roi[3:])]
-    points = []
-    sids = []
-    cids = []
-    colors = []
-    interval = 3
-    scolors = [i/len(segs) for i in list(range(len(segs)+1))]
-    for i, seg in enumerate(segs):
-        seg_color = scolors[i]
-        seg_points = []
-        seg_sids = []
-        seg_cids = []
-        seg_colors = []
-        for i, point in enumerate(seg['points']):
-            [x,y,z] = point
-            if x<=x1 or x>=x2 or y<=y1 or y>=y2 or z<=z1 or z>=z2:
-                continue
-            seg_points.append(point)
-            seg_sids.append(seg['sid'])
-            seg_cids.append(i)
-            seg_colors.append(seg_color)
-        if len(seg_points)==0:
-            continue
-
-        sampled_points = seg_points[:-(interval-2):interval]
-        sampled_points.append(seg_points[-1])
-        sampled_sids = seg_sids[:-(interval-2):interval]
-        sampled_sids.append(seg_sids[-1])
-        sampled_cids = seg_cids[:-(interval-2):interval]
-        sampled_cids.append(seg_cids[-1])
-        sampled_colors = seg_colors[:-(interval-2):interval]
-        sampled_colors.append(seg_colors[-1])
-
-        points += sampled_points
-        sids += sampled_sids
-        cids += sampled_cids
-        colors += sampled_colors
-
-
-    properties = {
-        'colors': np.array(colors),
-        'sids': np.array(sids),
-        'cids': np.array(cids)
-    }
-
-    viewer = napari.Viewer(ndisplay=3)
-    viewer.add_image(image,translate=roi[0:3])
-    point_layer = viewer.add_points(np.array(points),ndim=3,face_color='colors',size=0.8,edge_color='black',shading='spherical',properties=properties,face_colormap='turbo')
-    napari.run()
-
-
-
-
 class Annotator:
     def __init__(self, db_path, image_path, deconver):
         self.size = 32
@@ -71,7 +16,7 @@ class Annotator:
         self.viewer = napari.Viewer(ndisplay=3)
         self.image_layer = self.viewer.add_image(np.zeros((64, 64, 64), dtype=np.uint16))
         self.dec_layer = self.viewer.add_image(np.zeros((64, 64, 64), dtype=np.uint16))
-        self.point_layer = self.viewer.add_points(data=None,ndim=3,size=0.8,edge_color='black',shading='spherical',properties=None,face_colormap='turbo') 
+        self.point_layer = self.viewer.add_points(data=None,ndim=3,size=0.8,edge_color='black',shading='spherical',properties=None,face_colormap='turbo')
         self.add_control()
         self.deconver = deconver
         napari.run()
@@ -186,7 +131,6 @@ class Annotator:
             sids += sampled_sids
             cids += sampled_cids
             colors += sampled_colors
-        
 
         properties = {
             'colors': np.array(colors),
@@ -198,11 +142,13 @@ class Annotator:
         viewer.layers['Points'].properties = properties
         viewer.layers['Points'].face_colormap = 'turbo'
         viewer.layers['Points'].face_color = 'colors'
-        viewer.layers['Points'].selected_data = np.array([])
+        viewer.layers['Points'].selected_data = []
 
         viewer.layers['Image'].data = img
         viewer.layers['Image'].translate = roi[:3]
         viewer.layers['Image'].reset_contrast_limits()
+
+
 
         viewer.reset_view()
 
