@@ -1,5 +1,4 @@
 import numpy as np
-import napari
 import os
 from brightest_path_lib.algorithm import NBAStarSearch
 from scipy.spatial.distance import cdist
@@ -12,17 +11,21 @@ from skimage import morphology, measure
 from skimage.morphology import ball
 
 
-class Annotator:
-    def __init__(self, skels = None, viewer = None, save_dir = None):
-        self.viewer = napari.Viewer(ndisplay=3,title='instance annotator')
-        self.image_layer = self.viewer.add_image(np.zeros((64, 64, 64), dtype=np.uint16))
-        self.start_layer = self.viewer.add_points(ndim=3,face_color='cyan',size=2,name='start point',edge_color='black',shading='spherical')
-        self.goal_layer = self.viewer.add_points(ndim=3,face_color='red',size=2,name='goal point',edge_color='black',shading='spherical')
-        self.path_layer = self.viewer.add_points(ndim=3,face_color='green',size=1,name='path point',edge_color='black',shading='spherical')
-        self.save_dir = save_dir
+class SkelAnnotator:
+    def __init__(self, image, skels = None, viewer = None, save_dir = None):
+        if viewer is None:
+            raise TypeError('You need to pass a napari viewer for the myviewer argument')
+        else:
+            self.viewer = viewer
+            self.image_layer = self.viewer.add_image(image)
+            self.start_layer = self.viewer.add_points(ndim=3,face_color='cyan',size=2,name='start point',edge_color='black',shading='spherical')
+            self.goal_layer = self.viewer.add_points(ndim=3,face_color='red',size=2,name='goal point',edge_color='black',shading='spherical')
+            self.path_layer = self.viewer.add_points(ndim=3,face_color='green',size=1,name='path point',edge_color='black',shading='spherical')
+            self.save_dir = save_dir
         #establish key bindings
+        if skels is not None:
+            self.path_layer.data = skels
         self.add_callback()
-        napari.run()
 
 
     def add_callback(self):
@@ -163,6 +166,3 @@ class Annotator:
         print(image_name+' saved')
         print(mask_path+' saved')
 
-
-if __name__ == '__main__':
-    a = Annotator()

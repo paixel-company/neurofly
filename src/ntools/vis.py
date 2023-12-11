@@ -18,9 +18,9 @@ def show_skels_and_image(img,points):
     napari.run()
 
 
-def show_segs_as_instances(img,segs):
-    viewer = napari.Viewer(ndisplay=3)
-    image_layer = viewer.add_image(img)
+
+def show_segs_as_instances(segs,viewer):
+    print(f'num of segs: {len(segs)}')
     points = []
     colors = []
     for seg in segs:
@@ -31,7 +31,25 @@ def show_segs_as_instances(img,segs):
     properties = {
         'colors': np.array(colors)
     }
+    print(f'num of points: {len(points)}')
+    point_layer = viewer.add_points(np.array(points),ndim=3,face_color='colors',size=0.8,edge_color='black',shading='spherical',properties=properties,face_colormap='hsv')
 
-    point_layer = viewer.add_points(np.array(points),ndim=3,face_color='colors',size=1,edge_color='black',shading='spherical',properties=properties)
-    napari.run()
 
+
+def show_connected_segs(segs,viewer):
+    '''
+    segment:
+        {
+            sid: int,
+            head: coord,
+            tail: coord,
+            points: [head,...,tail],
+            sampled_points: points[::interval]
+            head_n = [ids],
+            tail_n = [ids],
+            side_n = [[id,index_of_point],...],
+            checked = int
+        }
+    '''
+
+    pass
