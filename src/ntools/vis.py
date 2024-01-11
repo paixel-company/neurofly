@@ -19,7 +19,7 @@ def show_skels_and_image(img,points):
 
 
 
-def show_segs_as_instances(segs,viewer):
+def show_segs_as_instances(segs,viewer,size=0.8):
     print(f'num of segs: {len(segs)}')
     points = []
     colors = []
@@ -32,7 +32,7 @@ def show_segs_as_instances(segs,viewer):
         'colors': np.array(colors)
     }
     print(f'num of points: {len(points)}')
-    point_layer = viewer.add_points(np.array(points),ndim=3,face_color='colors',size=0.8,edge_color='black',shading='spherical',properties=properties,face_colormap='hsv')
+    point_layer = viewer.add_points(np.array(points),ndim=3,face_color='colors',size=size,edge_color='colors',shading='spherical',edge_width=0,properties=properties,face_colormap='hsv')
 
 
 

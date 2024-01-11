@@ -1,6 +1,9 @@
 import numpy as np
 
 
+
+
+
 def get_patch_coords(roi,block_size):
     volume_size = roi[3:6]
     origin = roi[0:3]
@@ -24,7 +27,6 @@ def get_patch_rois(roi,block_size):
         size = [j-i for i,j in zip(c1,c2)]
         rois.append(c1+size)
     return rois
-
 
 
 
@@ -85,6 +87,3 @@ def patchify_without_splices(roi,patch_size,splices=300):
     return rois
 
 
-
-# patches = patchify_without_splices(roi=[47300, 34000, 39000, 500, 500, 500],patch_size=[300,300,300])
-# print(patches)

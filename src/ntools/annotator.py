@@ -3,7 +3,7 @@ import napari
 import json
 import os
 from brightest_path_lib.algorithm import NBAStarSearch
-from tifffile import imread
+from tifffile import imread, imwrite
 from magicgui import magicgui, widgets
 
 
@@ -30,8 +30,8 @@ class Annotator:
 
         self.button0 = widgets.PushButton(text="refresh")
         self.button0.clicked.connect(self.refresh)
-        self.button1 = widgets.PushButton(text="save file")
-        self.button1.clicked.connect(self.save_result)
+        self.button1 = widgets.PushButton(text="save json")
+        self.button1.clicked.connect(self.save_json)
         self.button2 = widgets.PushButton(text="save path (s)")
         self.button2.clicked.connect(self.save_current_path)
         self.button3 = widgets.PushButton(text="delete current path (d)")
@@ -40,10 +40,12 @@ class Annotator:
         self.button4.clicked.connect(self.delete_one_path)
         self.button5 = widgets.PushButton(text="find path (f)")
         self.button5.clicked.connect(self.find_path)
+        self.button6 = widgets.PushButton(text="save mask")
+        self.button6.clicked.connect(self.save_mask)
         self.image_path = widgets.FileEdit(label="image_path")
-        self.container = widgets.Container(widgets=[self.image_path, self.button0,self.button1,self.button2,self.button3,self.button4,self.button5])
+        self.container = widgets.Container(widgets=[self.image_path, self.button0,self.button1,self.button6,self.button2,self.button3,self.button4,self.button5])
         self.viewer.window.add_dock_widget(self.container, area='right')
-    
+
 
     def save_current_path(self,viewer):
         if len(self.path_layer.data)==0:
@@ -58,6 +60,7 @@ class Annotator:
                 points.append(point)
                 colors.append(seg_color)
         
+        # to avoid 1/0 when scaling values
         if colors[-1] == 0:
             colors[-1] = 1
 
@@ -78,7 +81,10 @@ class Annotator:
         
 
     def delete_one_path(self,viewer):
-        self.labeled_path = self.labeled_path[:-1]
+        if len(self.labeled_path)<=1:
+            self.labeled_path = []
+        else:
+            self.labeled_path = self.labeled_path[:-1]
         colors = []
         points = []
         scolors = [i/len(self.labeled_path) for i in list(range(len(self.labeled_path)))]
@@ -106,8 +112,12 @@ class Annotator:
         self.goal_layer.data = []
         # self.labeled_layer.refresh_colors()
 
+
     def refresh(self):
         img = imread(self.image_path.value)
+        self.labeled_path = []
+        self.path_layer.data = []
+        self.labeled_layer.data = []
         self.image_layer.data = img
         self.viewer.reset_view()
         self.image_layer.reset_contrast_limits()
@@ -197,7 +207,7 @@ class Annotator:
         return clamped_point
     
 
-    def save_result(self,viewer):
+    def save_json(self,viewer):
         image_path = self.image_path.value
         directory, image_name = os.path.split(image_path)
         json_name = image_name.replace('.tif','.json')
@@ -206,6 +216,27 @@ class Annotator:
         with open(json_path, "w") as json_file:
             json.dump(self.labeled_path, json_file, indent=4)
         print(json_path+' saved')
+
+
+    def save_mask(self,viewer):
+        image_path = self.image_path.value
+        directory, image_name = os.path.split(image_path)
+        mask_name = image_name.replace('img_','mask_')
+
+
+        image = self.image_layer.data
+        path = sum(self.labeled_path,[])
+        coordinates = np.array(path)
+        mask = np.zeros(image.shape, dtype=np.uint8)
+        mask[coordinates[:, 0], coordinates[:, 1], coordinates[:, 2]] = 1
+
+        mask_path = os.path.join(directory, mask_name)
+
+        imwrite(mask_path,mask,dtype=np.uint8)
+
+        print(mask_path+' saved')
+
+
 
 
 if __name__ == '__main__':

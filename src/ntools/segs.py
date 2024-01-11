@@ -112,56 +112,14 @@ class SegsTree():
             }
         '''
         offset = get_size(db_path)
-        length = self.get_length()
-        points = []
-        for i, point in enumerate(self.endpoints):
-            p = point.copy()
-            p['length'] = length[i]
-            p['checked'] = 0
-            points.append(p)
-        
+
         segs = []
         for i, seg in enumerate(self.segs_list()):
             s = seg.copy()
             s['sid'] = s['sid']+offset
             segs.append(s)
-        
+
         segs2db(segs,db_path)
-        points2db(points,db_path)
-
-
-
-class PointsTree():
-    def __init__(self, points):
-        '''
-        point:
-            {
-                pid: int,
-                coord: [x,y,z],
-                sid: int,
-                cid: int,
-                length: int,
-                checked: int
-            } 
-        '''
-        coords = []
-        self.points_ids = []
-        for i,point in enumerate(points):
-            coords.append(point['coord'])
-            self.points_ids.append(point['pid'])
-        self.tree = KDTree(np.array(coords))
-        self.points = {point['pid']: point for point in points} 
-    
-
-    def get_neighbor_sids(self,pid,dis=15):
-        # indices of points in kdtree are not pids
-        coord = self.points[pid]['coord']
-        dis, nbr_indices = self.tree.query(coord,k=50,distance_upper_bound=dis,p=np.inf)
-        nbr_indices = [j for i,j in zip(dis,nbr_indices) if i!=np.inf]
-        nbr_pids = [self.points_ids[i] for i in nbr_indices]
-        nbr_points = [self.points[i] for i in nbr_pids]
-        nbr_sids = [p['sid'] for p in nbr_points]
-        return list(set(nbr_sids)),nbr_points
 
 
 
@@ -184,11 +142,12 @@ def cat_segs(segs):
         print(seg['sid'],seg['head'],seg['tail'],len(seg['points']),len(seg['sampled_points']))
 
 
+
 if __name__ == '__main__':
-    from ntools.neuron import read_segs
-    segs_path = 'tests/test.json'
-    db_path = 'tests/test.db'
+    db_path = 'tests/z002.db'
+    from ntools.dbio import read_segs
+    segs = read_segs(db_path)
     stree = SegsTree(segs)
-    stree.write_db(db_path)
+    # stree.write_db(db_path)
     # cat_segs(segs)
 

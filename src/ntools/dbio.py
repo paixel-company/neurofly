@@ -49,7 +49,7 @@ def read_segs(db_path):
         data = {
             'sid': row[0],
             'points': eval(row[1]),
-            'sampled_points': row[2],
+            'sampled_points': eval(row[2]),
             'nbrs': eval(row[3]),
         }
         segs.append(data)

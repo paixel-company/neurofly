@@ -1,4 +1,5 @@
 import torch
+import time
 import torch.nn as nn
 import functools
 import numpy as np
@@ -12,14 +13,9 @@ from skimage.morphology import skeletonize
 from skimage.measure import label, regionprops
 from tqdm import tqdm
 from ntools.patch import patchify_without_splices, get_patch_rois
-from ntools.read_zarr import Image
-from empatches import EMPatches
 from ntools.dbio import segs2db
-import time
 
-# ==========
 # normaliz layer
-# ==========
 def get_norm_layer(norm_type='instance', dim=2):
     if dim == 2:
         BatchNorm = nn.BatchNorm2d
@@ -41,9 +37,7 @@ def get_norm_layer(norm_type='instance', dim=2):
         raise NotImplementedError('normalization layer [%s] is not found' % norm_type)
     return norm_layer
 
-# ==========
-# UNet
-# ==========
+# Conv block
 class DoubleConv(nn.Module):
     def __init__(self, in_channels, out_channels, *, norm_type='batch', dim=2):
         super(DoubleConv, self).__init__()
@@ -71,7 +65,7 @@ class DoubleConv(nn.Module):
         x = self.conv(x)
         return x
 
-
+# Unet
 class UNet(nn.Module):
     def __init__(self, in_channels=1, out_channels=1, features=[64, 128, 256, 512], *, norm_type='batch', dim=2):
         super(UNet, self).__init__()
@@ -129,8 +123,8 @@ class UNet(nn.Module):
 
 
 class Seger():
-    def __init__(self,ckpt_path,device=None):
-        model = UNet(1, 1, [64,128,256,512], norm_type='batch', dim=3) 
+    def __init__(self,ckpt_path,bg_thres,model_dims=[64,128,256,512],device=None):
+        model = UNet(1, 1, model_dims, norm_type='batch', dim=3)
         if device==None:
             self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
         else:
@@ -141,25 +135,21 @@ class Seger():
         model.eval()
         self.model = model
         self.bw = 14 #border width
+        self.bg_thres = bg_thres
 
 
-    def preprocess(self,img,percentiles=[0.01,0.9999],radius=None):
+    def preprocess(self,img,percentiles=[0.001,0.9999]):
         # input img [0,65535]
         # output img [0,1]
-        # median filter can increase accuracy a little bit with 3-4 times time consumption
         flattened_arr = np.sort(img.flatten())
         clip_low = int(percentiles[0] * len(flattened_arr))
         clip_high = int(percentiles[1] * len(flattened_arr))
-        if flattened_arr[clip_high]<1500:
+        if flattened_arr[clip_high]<self.bg_thres:
             return None
         clipped_arr = np.clip(img, flattened_arr[clip_low], flattened_arr[clip_high])
         min_value = np.min(clipped_arr)
         max_value = np.max(clipped_arr)
-        if radius != None and max_value<5000:
-            filtered = median_filter(clipped_arr,footprint=ball(radius),mode='reflect')
-        else:
-            filtered = clipped_arr 
-        max_value = max(max_value,2500)
+        filtered = clipped_arr
         img = (filtered-min_value)/(max_value-min_value)
         img = img.astype(np.float32)
         img = torch.from_numpy(img)
@@ -177,7 +167,7 @@ class Seger():
     
 
     def get_mask(self,img,thres=None):
-        img_in = self.preprocess(img,radius=None)
+        img_in = self.preprocess(img)
         if img_in != None:
             with torch.no_grad():
                 tensor_out = self.model(img_in.to(self.device)).cpu()
@@ -286,7 +276,7 @@ class Seger():
             distances = cdist(points, points)
             adjacency_matrix = distances <= 1.8
             np.fill_diagonal(adjacency_matrix, 0)
-            graph = nx.from_numpy_matrix(adjacency_matrix.astype(np.uint8))
+            graph = nx.from_numpy_array(adjacency_matrix.astype(np.uint8))
             # keep only DFS tree
             spanning_tree = nx.minimum_spanning_tree(graph, algorithm='kruskal', weight=None)
             graph.remove_edges_from(set(graph.edges) - set(spanning_tree.edges))
@@ -326,11 +316,16 @@ class Seger():
         return skel, segments
 
 
-    def process_whole(self,zarr_path,roi=None,dec=None):
+    def process_whole(self,image_path,roi=None,dec=None):
         '''
         cut whole brain image to [300,300,300] cubes without splices (z coordinates % 300 == 0)
         '''
-        image = Image(zarr_path)
+        if '.ims' in image_path:
+            from ntools.read_ims import Image
+        elif '.zarr' in image_path:
+            from ntools.read_zarr import Image
+
+        image = Image(image_path)
         if roi==None:
             image_roi = image.roi
         else:
@@ -392,79 +387,31 @@ if __name__ == '__main__':
     import numpy as np
     from ntools.vis import show_segs_as_instances
     from tifffile import imread
-    seger = Seger('src/weights/unet_seg2.pth')
-
-    # image_path = '/home/bean/workspace/data/axon.zarr'
-    # roi = [47800, 34200, 39600] + [328,328,328]
-
-    # image_path = '/home/bean/workspace/data/axon2.zarr'
-    # roi = [53000, 23500, 56500] + [500,500,300]
-
-    # image_path = '/home/bean/workspace/data/roi_dense1.zarr'
-    # roi = [52500, 22000, 60500] + [300,300,300]
-    '''
-
-    image_path = '/home/bean/workspace/data/test.zarr'
-    image = Image(image_path)
-    roi = image.roi[0:3] + [328,328,328]
-
-    image = Image(image_path)
-    img = image.from_roi(roi)
-
-    # dimg = dec.process_img(img)
-    dimg = img
-
-    # img = imread('/home/bean/workspace/data/deconvolved.tif')
-    # size = 200
-    # img = img[:size,:size,:size]
-    
-
-
-    # mask = seger.get_large_mask(img)
-    dmask = seger.get_large_mask(dimg)
-
-    # skel,segments = seger.mask_to_segs(mask)
-    skel,dsegments = seger.mask_to_segs(dmask)
-
-    # segs = []
-    # for seg in segments:
-    #     segs.append(seg['points'])
-        
-    dsegs = []
-    for seg in dsegments:
-        dsegs.append(seg['points'])
-
-
-    import napari
-    viewer = napari.Viewer(ndisplay=3)
-    # show_segs_as_instances(segs,viewer)
-    show_segs_as_instances(dsegs,viewer)
-    viewer.add_image(img)
-    viewer.add_image(dimg)
-    viewer.add_image(skel)
-    napari.run()
-    '''
+    seger = Seger('src/weights/mouse_tiny.pth',model_dims=[32,64,128],bg_thres=150)
 
     from ntools.neuron import save_segs
-    # image_path = '/home/bean/workspace/data/ROI1_whole.zarr'
-    image_path = '/home/bean/workspace/data/test.zarr'
-    roi = [38300,20600,67100,300,300,300] 
+    from ntools.read_ims import Image
+    image_path = '/home/bean/workspace/data/z002.ims'
+    # roi = [5280,4000,8480,500,500,500] # cell body
+    # roi = [3500,6200,7400,500,500,500] # cells 200
+    # roi = [3800,5300,11000,500,500,500] # cells 300
+    # roi = [7000,6689,4500,500,500,500] # vessel with bright noise
+    # roi = [6200,6300,9200,500,500,500] # vessel
+    # roi = [6500,7300,10500,500,500,500] # vessel
+    # roi = [2800,3100,10400,500,500,500] # cortex
+    # roi = [7000,5200,7600,500,500,500] # weak signal
+    roi = [2300,3600,10000,500,500,500] # weak cortex
     segs = seger.process_whole(image_path, roi=roi)
     image = Image(image_path)
     img = image.from_roi(roi)
-    # segs = seger.process_whole(image_path)
-
-    # save_segs(segs,'tests/test.json')
-    # segs2db(segs,'tests/test.db')
 
     import napari
     viewer = napari.Viewer(ndisplay=3)
     image_layer = viewer.add_image(img)
     image_layer.translate = roi[0:3]
-    # show_segs_as_instances(segs,viewer)
     seg_points = []
     for seg in segs:
-        seg_points.append(seg['points'])
-    show_segs_as_instances(seg_points,viewer)
+        seg_points.append(seg['sampled_points'])
+    show_segs_as_instances(seg_points,viewer,size=2)
     napari.run()
 
