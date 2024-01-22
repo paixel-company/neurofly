@@ -28,6 +28,7 @@ def gen_dataset(source_dir, out_dir, N=512):
     skel_source_dir = os.path.join(source_dir, 'skels')
     bg_source_dir = os.path.join(source_dir, 'bg')
 
+    os.mkdir(out_dir)
     img_dir = os.path.join(out_dir, 'img')
     mask_dir = os.path.join(out_dir, 'mask')
     bg_dir = os.path.join(out_dir, 'img_bg')
@@ -89,7 +90,6 @@ def gen_dataset(source_dir, out_dir, N=512):
 
 
 if __name__ == '__main__':
-    source_dir = '/home/bean/workspace/data/c002_labeled/'
-    out_dir = '/home/bean/workspace/data/c002_aug/'
-    gen_dataset(source_dir,out_dir,N=1024)
-
+    source_dir = '/home/bean/workspace/data/mouse_lzh_labeled/'
+    out_dir = '/home/bean/workspace/data/mouse_lzh_aug/'
+    gen_dataset(source_dir,out_dir,N=2048)

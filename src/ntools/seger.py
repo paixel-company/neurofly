@@ -1,9 +1,10 @@
 import torch
 import time
-import torch.nn as nn
 import functools
+import argparse
 import numpy as np
 import networkx as nx
+import torch.nn as nn
 from scipy.ndimage import median_filter
 from scipy.spatial.distance import cdist
 from scipy.ndimage import label
@@ -13,7 +14,7 @@ from skimage.morphology import skeletonize
 from skimage.measure import label, regionprops
 from tqdm import tqdm
 from ntools.patch import patchify_without_splices, get_patch_rois
-from ntools.dbio import segs2db
+from ntools.dbio import segs2db, points2db
 
 # normaliz layer
 def get_norm_layer(norm_type='instance', dim=2):
@@ -120,6 +121,7 @@ class UNet(nn.Module):
 
         x = self.final_conv(x)
         return x
+
 
 
 class Seger():
@@ -254,7 +256,7 @@ class Seger():
 
         interval = 3
         # remove border
-        border_size = 1
+        border_size = 3
 
         mask[:border_size, :, :] = 0
         mask[-border_size:, :, :] = 0
@@ -384,13 +386,15 @@ class Seger():
 
 
 if __name__ == '__main__':
-    import numpy as np
     from ntools.vis import show_segs_as_instances
-    from tifffile import imread
-    seger = Seger('src/weights/mouse_tiny.pth',model_dims=[32,64,128],bg_thres=150)
+
+
+    seger = Seger('src/weights/lzh_tiny.pth',model_dims=[32,64,128],bg_thres=150)
 
     from ntools.neuron import save_segs
     from ntools.read_ims import Image
+
+    '''
     image_path = '/home/bean/workspace/data/z002.ims'
     # roi = [5280,4000,8480,500,500,500] # cell body
     # roi = [3500,6200,7400,500,500,500] # cells 200
@@ -399,8 +403,14 @@ if __name__ == '__main__':
     # roi = [6200,6300,9200,500,500,500] # vessel
     # roi = [6500,7300,10500,500,500,500] # vessel
     # roi = [2800,3100,10400,500,500,500] # cortex
+    # roi = [3200,4000,7700,500,500,500] # cortex
     # roi = [7000,5200,7600,500,500,500] # weak signal
-    roi = [2300,3600,10000,500,500,500] # weak cortex
+    # roi = [2300,3600,10000,500,500,500] # weak cortex
+    '''
+
+    image_path = '/home/bean/workspace/data/mouse_lzh.ims'
+    roi = [6200,3600,9000,500,500,500]
+
     segs = seger.process_whole(image_path, roi=roi)
     image = Image(image_path)
     img = image.from_roi(roi)

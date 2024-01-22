@@ -42,6 +42,7 @@ class Annotator:
         self.button5.clicked.connect(self.find_path)
         self.button6 = widgets.PushButton(text="save mask")
         self.button6.clicked.connect(self.save_mask)
+
         self.image_path = widgets.FileEdit(label="image_path")
         self.container = widgets.Container(widgets=[self.image_path, self.button0,self.button1,self.button6,self.button2,self.button3,self.button4,self.button5])
         self.viewer.window.add_dock_widget(self.container, area='right')
@@ -228,14 +229,14 @@ class Annotator:
         path = sum(self.labeled_path,[])
         coordinates = np.array(path)
         mask = np.zeros(image.shape, dtype=np.uint8)
-        mask[coordinates[:, 0], coordinates[:, 1], coordinates[:, 2]] = 1
+        if len(coordinates)>0:
+            mask[coordinates[:, 0], coordinates[:, 1], coordinates[:, 2]] = 1
 
         mask_path = os.path.join(directory, mask_name)
 
         imwrite(mask_path,mask,dtype=np.uint8)
 
         print(mask_path+' saved')
-
 
 
 

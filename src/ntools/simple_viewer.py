@@ -28,16 +28,25 @@ class SimpleViewer:
         self.button2.clicked.connect(self.level_down)
         self.button3 = widgets.PushButton(text="save image")
         self.button3.clicked.connect(self.save_image)
+        self.button4 = widgets.PushButton(text="toggle full view")
+        self.button4.clicked.connect(self.toggle_full_view)
         self.image_path = widgets.FileEdit(label="image_path")
         self.save_dir = widgets.FileEdit(label="save dir",mode='d')
-        self.size = widgets.LineEdit(label="block size", value=128)
+        # self.size = widgets.LineEdit(label="block size", value=128)
+        self.size = widgets.Slider(label="block size", value=128, min=128, max=1024)
+        self.size.changed.connect(self.clip_value)
         self.x = widgets.LineEdit(label="x coordinate", value=5280)
         self.y = widgets.LineEdit(label="y coordinate",value=4000)
         self.z = widgets.LineEdit(label="z coordinate",value=8480)
+        self.patchify = widgets.CheckBox(value=False,text='patchify to 128')
         self.level = widgets.LineEdit(label="level",value=0)
         self.level_info = widgets.TextEdit(label='level info')
-        self.container = widgets.Container(widgets=[self.image_path, self.save_dir,self.size, self.x, self.y, self.z, self.level, self.level_info, self.button3, self.button1, self.button2 ,self.button0])
+        self.container = widgets.Container(widgets=[self.image_path, self.save_dir,self.size,self.x, self.y, self.z, self.level, self.level_info, self.patchify, self.button3, self.button1, self.button2,self.button4, self.button0])
         self.viewer.window.add_dock_widget(self.container, area='right')
+
+
+    def clip_value(self):
+        self.size.value = (self.size.value//128)*128
 
 
     def refresh(self):
@@ -54,6 +63,19 @@ class SimpleViewer:
         self.image_layer.reset_contrast_limits()
         info = "\n".join(f"{key}: {value}" for key, value in self.image.info[int(self.level.value)].items())
         self.level_info.value = info
+
+
+    def toggle_full_view(self):
+        image_size = self.image.info[int(self.level.value)]['image_size']
+        roi = [0,0,0]+image_size 
+        image = self.image.from_roi(roi, int(self.level.value))
+        self.image_layer.data = image
+        self.image_layer.translate = roi[:3]
+        camera_state = self.viewer.camera.angles
+        self.viewer.reset_view()
+        self.viewer.camera.angles = camera_state
+        self.viewer.layers.selection.active = self.image_layer
+        self.image_layer.reset_contrast_limits()
 
 
     def level_down(self):
@@ -120,7 +142,7 @@ class SimpleViewer:
         values = []
         for i in range(n_iterations):
             sample_point = np.asarray(near_point + i * increment_vector, dtype=int)
-            sample_point = self.clamp_point_to_bbox(sample_point, bbox)
+            sample_point = np.clip(sample_point, bbox[:, 0], bbox[:, 1])
             value = layer.data[sample_point[0], sample_point[1], sample_point[2]]
             sample_points.append(sample_point)
             values.append(value)
@@ -136,24 +158,30 @@ class SimpleViewer:
             self.refresh()
 
 
-    def clamp_point_to_bbox(self, point: np.ndarray, bbox: np.ndarray):
-        clamped_point = np.clip(point, bbox[:, 0], bbox[:, 1])
-        return clamped_point
-
-
     def save_image(self, viewer):
-        # image_name = filedialog.asksaveasfilename()
-        all_files = os.listdir(self.save_dir.value)
-
-        tif_files = [file for file in all_files if file.endswith('.tif')]
-        next_image_number = len(tif_files)+1
-        image_name = f'img_{next_image_number}.tif'
-        image_name = os.path.join(self.save_dir.value, image_name)
-
         image = self.image_layer.data
-        imwrite(image_name,image)
+        patches = []
+        if self.patchify.value == True:
+            depth, height, width = image.shape
+            patch_depth, patch_height, patch_width = [128,128,128]
+            for d in range(0, depth, patch_depth):
+                for h in range(0, height, patch_height):
+                    for w in range(0, width, patch_width):
+                        patch = image[d:d + patch_depth, h:h + patch_height, w:w + patch_width]
+                        patches.append(patch)
+        else:
+            patches.append(image)
+        
+        for img in patches:
+            all_files = os.listdir(self.save_dir.value)
+            tif_files = [file for file in all_files if file.endswith('.tif')]
+            next_image_number = len(tif_files)+1
+            image_name = f'img_{next_image_number}.tif'
+            image_name = os.path.join(self.save_dir.value, image_name)
 
-        print(image_name+' saved')
+            imwrite(image_name,img)
+
+            print(image_name+' saved')
 
 
 if __name__ == '__main__':

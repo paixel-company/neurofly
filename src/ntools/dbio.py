@@ -151,7 +151,6 @@ def points2db(points,path):
         }
     '''
 
-    # connect to SQLite database
     conn = sqlite3.connect(path)
     cursor = conn.cursor()
     cursor.execute('''CREATE TABLE IF NOT EXISTS points(
@@ -173,7 +172,6 @@ def points2db(points,path):
                     (sqlite3.Binary(str(point['coord']).encode()), point['sid'], point['cid'], point['length'], point['checked']))
 
     print(f'Number of points in database: {count}, {len(points)} newly added.')
-
     conn.commit()
     conn.close()
 

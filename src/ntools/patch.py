@@ -2,8 +2,6 @@ import numpy as np
 
 
 
-
-
 def get_patch_coords(roi,block_size):
     volume_size = roi[3:6]
     origin = roi[0:3]
