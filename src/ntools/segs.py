@@ -62,7 +62,7 @@ class SegsTree():
 
 
     def get_nbr_segs(self,coord,dis):
-        nbr_indices = self.stree.query_ball_point(coord,dis,p=np.inf)
+        nbr_indices = self.stree._point(coord,dis,p=np.inf)
         nbr_points = [self.spoints[i] for i in nbr_indices]
         sids = list(set([p['sid'] for p in nbr_points]))
         return sids

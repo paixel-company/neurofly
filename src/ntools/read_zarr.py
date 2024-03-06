@@ -29,6 +29,7 @@ class Image():
         # add padding
         [xlb,ylb,zlb] = self.roi[0:3] 
         [xhb,yhb,zhb] = [i+j for i,j in zip(self.roi[:3],self.roi[3:])]
+
         xlp = max(xlb-x_min,0)
         xhp = max(x_max-xhb,0)
         ylp = max(ylb-y_min,0)

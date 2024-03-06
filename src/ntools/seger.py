@@ -8,7 +8,7 @@ import torch.nn as nn
 from scipy.ndimage import median_filter
 from scipy.spatial.distance import cdist
 from scipy.ndimage import label
-from skimage.morphology import ball
+from skimage.morphology import ball, binary_dilation, binary_erosion
 from skimage.feature import peak_local_max
 from skimage.morphology import skeletonize
 from skimage.measure import label, regionprops
@@ -125,7 +125,13 @@ class UNet(nn.Module):
 
 
 class Seger():
-    def __init__(self,ckpt_path,bg_thres,model_dims=[64,128,256,512],device=None):
+    def __init__(self,ckpt_path,bg_thres,device=None):
+        if 'tiny' in ckpt_path:
+            model_dims = [32,64,128]
+        elif 'medium' in ckpt_path:
+            model_dims = [32,64,128,256]
+        elif 'dumpy' in ckpt_path:
+            model_dims = [64,128,256]
         model = UNet(1, 1, model_dims, norm_type='batch', dim=3)
         if device==None:
             self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -256,17 +262,20 @@ class Seger():
 
         interval = 3
         # remove border
-        border_size = 3
+        border_size = 0
+        if border_size>0:
+            mask[:border_size, :, :] = 0
+            mask[-border_size:, :, :] = 0
 
-        mask[:border_size, :, :] = 0
-        mask[-border_size:, :, :] = 0
+            mask[:, :border_size, :] = 0
+            mask[:, -border_size:, :] = 0
 
-        mask[:, :border_size, :] = 0
-        mask[:, -border_size:, :] = 0
+            mask[:, :, :border_size] = 0
+            mask[:, :, -border_size:] = 0
 
-        mask[:, :, :border_size] = 0
-        mask[:, :, -border_size:] = 0
 
+        mask = binary_dilation(mask,footprint=ball(2))
+        # mask = binary_erosion(mask,footprint=ball(3))
 
         skel = skeletonize(mask)
         labels = label(skel, connectivity=3)
@@ -276,13 +285,12 @@ class Seger():
         for region in regions:
             points = region.coords
             distances = cdist(points, points)
-            adjacency_matrix = distances <= 1.8
+            adjacency_matrix = distances <= 1.8 # sqrt(3)
             np.fill_diagonal(adjacency_matrix, 0)
             graph = nx.from_numpy_array(adjacency_matrix.astype(np.uint8))
             # keep only DFS tree
             spanning_tree = nx.minimum_spanning_tree(graph, algorithm='kruskal', weight=None)
             graph.remove_edges_from(set(graph.edges) - set(spanning_tree.edges))
-
             branch_nodes = [node for node, degree in graph.degree() if degree >= 3]
 
             # branch_nbrs = []
@@ -305,7 +313,7 @@ class Seger():
                 seg_points = np.array([points[i].tolist() for i in path])
                 seg_points = seg_points + np.array(offset)
                 seg_points = seg_points.tolist()
-                sampled_points = seg_points[:-(interval-2):interval]
+                sampled_points = seg_points[:-(interval-1):interval]
                 sampled_points.append(seg_points[-1])
                 segments.append(
                     {
@@ -384,32 +392,50 @@ class Seger():
         return segs
 
 
-
 if __name__ == '__main__':
     from ntools.vis import show_segs_as_instances
 
-
-    seger = Seger('src/weights/lzh_tiny.pth',model_dims=[32,64,128],bg_thres=150)
+    # seger = Seger('src/weights/rm009_tiny.pth',bg_thres=150)
+    # seger = Seger('src/weights/universal_dumpy.pth',bg_thres=150)
+    # seger = Seger('src/weights/universal_tiny.pth',bg_thres=150)
+    seger = Seger('src/weights/z002_tiny.pth',bg_thres=150)
 
     from ntools.neuron import save_segs
     from ntools.read_ims import Image
 
-    '''
+    # 
     image_path = '/home/bean/workspace/data/z002.ims'
-    # roi = [5280,4000,8480,500,500,500] # cell body
+    roi = [5280,4000,8480,500,500,500] # cell body
     # roi = [3500,6200,7400,500,500,500] # cells 200
     # roi = [3800,5300,11000,500,500,500] # cells 300
     # roi = [7000,6689,4500,500,500,500] # vessel with bright noise
     # roi = [6200,6300,9200,500,500,500] # vessel
     # roi = [6500,7300,10500,500,500,500] # vessel
     # roi = [2800,3100,10400,500,500,500] # cortex
+    # roi = [3800,3200,7100,500,500,500] # sparse axon
     # roi = [3200,4000,7700,500,500,500] # cortex
     # roi = [7000,5200,7600,500,500,500] # weak signal
     # roi = [2300,3600,10000,500,500,500] # weak cortex
+    # roi = [3050,4300,8400,128,128,128]
+    # 
+
+
+    '''
+    image_path = '/home/bean/workspace/data/mouse_lzh.ims'
+    # roi = [6200,3600,9000,500,500,500]
+    # roi = [7200,3600,11100,500,500,500]
+    # roi = [7400,3000,11000,500,500,500] # sparse cortex
+    # roi = [4000,6100,5000,500,500,500] # more sparse cortex
     '''
 
-    image_path = '/home/bean/workspace/data/mouse_lzh.ims'
-    roi = [6200,3600,9000,500,500,500]
+
+    '''
+    image_path = '/home/bean/workspace/data/ROI1.ims'
+    offset = [51500,22500,59400]
+    roi = [52400,24300,64000,500,500,500]
+    # roi = [54700,23600,60000,500,500,500]
+    roi[0:3] = [i-j for i,j in zip(roi[0:3],offset)]
+    '''
 
     segs = seger.process_whole(image_path, roi=roi)
     image = Image(image_path)

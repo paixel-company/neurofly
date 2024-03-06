@@ -67,6 +67,8 @@ class SimpleViewer:
 
     def toggle_full_view(self):
         image_size = self.image.info[int(self.level.value)]['image_size']
+        if max(image_size)>1024:
+            return
         roi = [0,0,0]+image_size 
         image = self.image.from_roi(roi, int(self.level.value))
         self.image_layer.data = image

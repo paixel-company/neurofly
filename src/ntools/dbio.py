@@ -1,39 +1,116 @@
+from datetime import datetime
 import sqlite3
 import os
+import time
 
 
 def segs2db(segs,path):
     '''
-    segment:
+    given a list of segs, add all nodes and edges to the datebase.
+    seg:
         {
-            sid: int,
             points: [head,...,tail],
             sampled_points: points[::interval],
-            nbrs = [[index_of_point,sid],...],
         }
+    node:
+        {
+            nid: int, PRIMARY KEY
+            coord: str,
+            nbrs: str,
+            checked: int
+        }
+    edge
+        {
+            src: int, 
+            des: int,
+            date: str, TIMESTAMP
+            creator: str,
+            PRIMARY KEY: (src,des)
+        }
+
+    the graph is undirected, thus edges exist in pairs
     '''
 
-    # connect to SQLite database
     conn = sqlite3.connect(path)
     cursor = conn.cursor()
-    cursor.execute('''CREATE TABLE IF NOT EXISTS segs(
-                        sid INTEGER PRIMARY KEY,
-                        points TEXT,
-                        sampled_points TEXT,
-                        nbrs TEXT
-                    )''')
+    cursor.execute(
+            '''
+            CREATE TABLE IF NOT EXISTS segs(
+                sid INTEGER PRIMARY KEY,
+                points TEXT,
+                sampled_points TEXT
+            )
+            '''
+        )
+    cursor.execute(
+            '''
+            CREATE TABLE IF NOT EXISTS nodes(
+                nid INTEGER PRIMARY KEY,
+                coord TEXT,
+                nbrs TEXT,
+                checked INTEGER
+            )
+            '''
+        )
 
+    cursor.execute(
+            '''
+            CREATE TABLE IF NOT EXISTS edges(
+                src INTEGER,
+                des INTEGER,
+                date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                creator TEXT,
+                PRIMARY KEY (src,des)
+            )
+            '''
+        )
+    
     query = f"SELECT COUNT(*) FROM segs"
     cursor.execute(query)
     result = cursor.fetchone()
     count = result[0]
-
-
+    
     for seg in segs:
-        cursor.execute(f"INSERT INTO segs (sid, points, sampled_points, nbrs) VALUES (?, ?, ?, ?)",
-                    (seg['sid'], sqlite3.Binary(str(seg['points']).encode()), sqlite3.Binary(str(seg['sampled_points']).encode()), sqlite3.Binary(str(seg['nbrs']).encode())))
+        count+=1
+        cursor.execute(f"INSERT INTO segs (sid, points, sampled_points) VALUES (?, ?, ?)",
+                    (count, sqlite3.Binary(str(seg['points']).encode()), sqlite3.Binary(str(seg['sampled_points']).encode())))
 
     print(f'Number of segs in database: {count}, {len(segs)} newly added.')
+
+    query = f"SELECT COUNT(*) FROM nodes"
+    cursor.execute(query)
+    result = cursor.fetchone()
+    count = result[0]
+
+    # assign unique nid for each node in segs according to index
+    nodes = [] # [nid,coord,nbr_ids]
+    edges = [] # [source_id,target_id]
+
+    # TODO: append nbrs to node[]
+    for seg in segs:
+        points = seg['sampled_points']
+        count+=1
+        nodes.append([count,points[0],[count+1]])
+        edges.append([count,count+1])
+        edges.append([count+1,count])
+
+        for c in points[1:-1]:
+            count+=1
+            nodes.append([count,c,[count-1,count+1]])
+            edges.append([count,count+1])
+            edges.append([count+1,count])
+
+        count+=1
+        nodes.append([count,points[-1],[count-1]])
+    
+    # add nodes and edges to the database
+    for node in nodes:
+        cursor.execute(f"INSERT INTO nodes (nid, coord, nbrs, checked) VALUES (?, ?, ?, ?)",
+                    (node[0], sqlite3.Binary(str(node[1]).encode()), sqlite3.Binary(str(node[2]).encode()), 0))
+
+    for edge in edges:
+        cursor.execute(f"INSERT INTO edges (src, des, date, creator) VALUES (?, ?, ?, ?)",
+                    (edge[0], edge[1], datetime.now(), 'seger'))
 
     conn.commit()
     conn.close()
@@ -50,31 +127,47 @@ def read_segs(db_path):
             'sid': row[0],
             'points': eval(row[1]),
             'sampled_points': eval(row[2]),
-            'nbrs': eval(row[3]),
         }
         segs.append(data)
     conn.close()
     return segs
 
 
-
-def read_points(db_path):
+def read_nodes(db_path):
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM points ORDER BY length")
+    cursor.execute("SELECT * FROM nodes ORDER BY nid")
     rows = cursor.fetchall()
     points = []
     for row in rows:
         data = {
-            'coord': eval(row[0]),
-            'sid': row[1],
-            'cid': row[2],
-            'length': row[3],
-            'checked': row[4],
+            'nid': row[0],
+            'coord': eval(row[1]),
+            'nbrs': eval(row[2]),
+            'checked': row[3],
         }
         points.append(data)
     conn.close()
     return points
+
+
+def read_edges(db_path):
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM edges")
+    rows = cursor.fetchall()
+    points = []
+    for row in rows:
+        data = {
+            'src': row[0],
+            'des': row[1],
+            'date': row[2],
+            'creator': row[3],
+        }
+        points.append(data)
+    conn.close()
+    return points
+
 
 
 def get_one_point(db_path):
@@ -92,10 +185,9 @@ def get_one_point(db_path):
             'length': row[3],
             'checked': row[4],
         }
-        points.append(data)
+        points.appenk(data)
     conn.close()
     return points[0]
-
 
 
 def get_random_point(db_path):
@@ -207,6 +299,7 @@ def segs_from_sids(path,sids):
     return segs
 
 
+
 if __name__ == '__main__':
     from ntools.segs import SegsTree
     db_path = 'tests/test.db'
@@ -225,4 +318,5 @@ if __name__ == '__main__':
     points = get_points(db_path,pids)
     for point in points:
         print(point['sid'],point['length'])
+
 
