@@ -186,5 +186,9 @@ class SimpleViewer:
             print(image_name+' saved')
 
 
+def main_function():
+    viewer = SimpleViewer()
+
+
 if __name__ == '__main__':
-    s = SimpleViewer()
+    main_function()

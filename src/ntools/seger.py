@@ -14,7 +14,7 @@ from skimage.morphology import skeletonize
 from skimage.measure import label, regionprops
 from tqdm import tqdm
 from ntools.patch import patchify_without_splices, get_patch_rois
-from ntools.dbio import segs2db, points2db
+from ntools.dbio import segs2db
 
 # normaliz layer
 def get_norm_layer(norm_type='instance', dim=2):
@@ -262,17 +262,20 @@ class Seger():
 
         interval = 3
         # remove border
-        border_size = 0
-        if border_size>0:
-            mask[:border_size, :, :] = 0
-            mask[-border_size:, :, :] = 0
+        # border_size = [0,0,3]
+        # if border_size>0:
+        #     mask[:border_size[0], :, :] = 0
+        #     mask[-border_size[0]:, :, :] = 0
 
-            mask[:, :border_size, :] = 0
-            mask[:, -border_size:, :] = 0
+        #     mask[:, :border_size[1], :] = 0
+        #     mask[:, -border_size[1]:, :] = 0
 
-            mask[:, :, :border_size] = 0
-            mask[:, :, -border_size:] = 0
+        #     mask[:, :, :border_size[2]] = 0
+        #     mask[:, :, -border_size[2]:] = 0
 
+        z_border = 3
+        mask[:, :, :z_border] = 0
+        mask[:, :, -z_border:] = 0
 
         mask = binary_dilation(mask,footprint=ball(2))
         # mask = binary_erosion(mask,footprint=ball(3))
