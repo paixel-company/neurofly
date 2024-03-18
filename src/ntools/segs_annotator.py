@@ -488,6 +488,7 @@ class Annotator:
                 if node == {}:
                     node_id = cc[i]
                     delete_nodes(str(self.db_path.value),[node_id])
+                    continue
                 coords.append(node['coord'])
                 nids.append(node['nid'])
                 colors.append(color)
