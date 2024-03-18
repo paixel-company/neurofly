@@ -8,7 +8,7 @@ setup(
         'console_scripts': [
             'segs_annotator = ntools.segs_annotator:main_function',
             'simple_viewer = ntools.simple_viewer:main_function',
-            'skel_annotator = ntools.simple_viewer:main_function'
+            'skel_annotator = ntools.skel_annotator:main_function'
         ]
     },
     requires = ["setuptools"],

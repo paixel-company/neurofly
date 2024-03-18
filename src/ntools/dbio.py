@@ -173,9 +173,9 @@ def delete_nodes(path,node_ids):
     # given a list of node_ids, delete nodes from nodes table and edges from edges table
     conn = sqlite3.connect(path)
     cursor = conn.cursor()
-    cursor.execute("DELETE FROM nodes WHERE nid IN ({})".format(','.join(map(str, node_ids))))
+    cursor.execute("DELETE OR IGNORE FROM nodes WHERE nid IN ({})".format(','.join(map(str, node_ids))))
     # Remove edges where either source or destination node is in the given list
-    cursor.execute("DELETE FROM edges WHERE src IN ({}) OR des IN ({})".format(','.join(map(str, node_ids)), ','.join(map(str, node_ids))))
+    cursor.execute("DELETE OR IGNORE FROM edges WHERE src IN ({}) OR des IN ({})".format(','.join(map(str, node_ids)), ','.join(map(str, node_ids))))
     conn.commit()
     conn.close()
 
@@ -217,7 +217,7 @@ def check_node(path,nid):
     conn = sqlite3.connect(path)
     cursor = conn.cursor()
 
-    cursor.execute("UPDATE nodes SET checked = 1 WHERE nid = ?", (nid,))
+    cursor.execute("UPDATE OR IGNORE nodes SET checked = 1 WHERE nid = ?", (nid,))
 
     conn.commit()
     conn.close()
@@ -228,7 +228,7 @@ def uncheck_nodes(path,nids):
     conn = sqlite3.connect(path)
     cursor = conn.cursor()
 
-    cursor.execute("UPDATE nodes SET checked = -1 WHERE nid IN ({})".format(','.join(map(str, nids))))
+    cursor.execute("UPDATE OR IGNORE nodes SET checked = -1 WHERE nid IN ({})".format(','.join(map(str, nids))))
 
     conn.commit()
     conn.close()

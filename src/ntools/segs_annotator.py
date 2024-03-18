@@ -10,6 +10,12 @@ import napari
 import random
 
 
+# use PushButton itself as a recorder
+class PushButton(widgets.PushButton):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.history = []
+
 
 class Annotator:
     def __init__(self):
@@ -52,6 +58,7 @@ class Annotator:
         self.viewer.bind_key('f', self.submit_result,overwrite=True)
         self.viewer.bind_key('w', self.connect_one_nearest,overwrite=True)
         self.viewer.bind_key('e', self.connect_two_nearest,overwrite=True)
+        self.viewer.bind_key('b', self.last_task,overwrite=True)
 
         self.panorama_points.mouse_drag_callbacks.append(self.node_selection)
         self.point_layer.mouse_drag_callbacks.append(self.node_operations)
@@ -76,10 +83,10 @@ class Annotator:
         self.nodes_left = widgets.LineEdit(label="nodes left", value=0)
         self.image_size = widgets.Slider(label="block size", value=64, min=64, max=1024)
         self.refresh_button = widgets.PushButton(text="refresh (d)")
-        self.next_button = widgets.PushButton(text="next task (n)")
+        self.return_button = widgets.PushButton(text="shit I misclicked (b)")
         self.recover_button = widgets.PushButton(text="recover (r)")
         # next task is just ask for new task without submitting
-        self.submit_button = widgets.PushButton(text="submit (f)")
+        self.submit_button = PushButton(text="submit (f)")
         self.proofreading_switch = widgets.CheckBox(value=False,text='Proofreading')
         # ---------------------------
 
@@ -90,6 +97,7 @@ class Annotator:
         self.image_size.changed.connect(self.clip_value)
         self.refresh_button.clicked.connect(self.refresh)
         self.recover_button.clicked.connect(self.recover)
+        self.return_button.clicked.connect(self.last_task)
         # ---------------------------
 
         self.container = widgets.Container(widgets=[
@@ -108,7 +116,7 @@ class Annotator:
             self.image_size,
             self.proofreading_switch,
             self.refresh_button,
-            self.next_button,
+            self.return_button,
             self.recover_button,
             self.submit_button
             ])
@@ -118,6 +126,9 @@ class Annotator:
 
     def connect_one_nearest(self,viewer):
         # find one closest neighbour point, add it to self.connected_nodes
+        if len(self.delected_nodes['nodes'])>0 or len(self.added_nodes)>0:
+            show_info('Do not use this if you have added or deleted nodes')
+            return
         selection = int(self.selected_node.value)
         c_coord = self.G.nodes[selection]['coord']
         d, nbrs = self.kdtree.query(c_coord, self.image_size.value//2, p=float(np.inf))
@@ -132,6 +143,9 @@ class Annotator:
 
     def connect_two_nearest(self,viewer):
         # find one closest neighbour point, add it to self.connected_nodes
+        if len(self.delected_nodes['nodes'])>0 or len(self.added_nodes)>0:
+            show_info('Do not use this if you have added or deleted nodes')
+            return
         selection = int(self.selected_node.value)
         c_coord = self.G.nodes[selection]['coord']
         d, nbrs = self.kdtree.query(c_coord, self.image_size.value//2, p=float(np.inf))
@@ -161,6 +175,14 @@ class Annotator:
             self.viewer.camera.zoom = 5
             self.refresh(self.viewer)
         else:
+            # remove current recordings
+            self.connected_nodes = []
+            self.delected_nodes = {
+                'nodes': [],
+                'edges': []
+            }
+            self.added_nodes = []
+            self.node_list = []
             self.refresh_panorama()
 
 
@@ -169,6 +191,18 @@ class Annotator:
             self.viewer.layers.selection.active = self.image_layer
         elif self.viewer.layers.selection.active == self.image_layer:
             self.viewer.layers.selection.active = self.point_layer
+    
+
+    def last_task(self,viewer):
+        if len(self.submit_button.history)>0:
+            last_node = self.submit_button.history[-1]
+            self.G.nodes[last_node]['checked'] = -1
+            self.selected_node.value = str(last_node)
+            self.submit_button.history.remove(last_node)
+            self.refresh_edge_layer()
+            self.refresh(self.viewer)
+        else:
+            show_info("No history recorded")
 
 
     def refresh(self, viewer):
@@ -301,11 +335,13 @@ class Annotator:
         if len(self.added_nodes)!=0:
             self.G.remove_nodes_from(self.added_nodes)
         self.added_nodes = []
-
+        self.connected_nodes = []
+        self.refresh_edge_layer()
         self.refresh(self.viewer)
 
 
     def submit_result(self,viewer):
+        self.submit_button.history.append(int(self.selected_node.value))
         self.update_database()
         self.update_local()
 
@@ -446,10 +482,12 @@ class Annotator:
             if len(cc)<int(self.len_thres.value):
                 continue
             color = random.random()
+            # check empty nodes
             nodes = [self.G.nodes[i] for i in cc]
-            for node in nodes:
+            for i,node in enumerate(nodes):
                 if node == {}:
-                    print(node)
+                    node_id = cc[i]
+                    delete_nodes(str(self.db_path.value),[node_id])
                 coords.append(node['coord'])
                 nids.append(node['nid'])
                 colors.append(color)
@@ -480,10 +518,12 @@ class Annotator:
         self.panorama_points.visible = True
         if self.image_switch.value == True:
             self.panorama_image.visible = True
+
         self.point_layer.visible = False 
         self.image_layer.visible = False
         self.edge_layer.visible = False
         self.ex_edge_layer.visible = False
+
         self.viewer.reset_view()
         self.viewer.layers.selection.active = self.panorama_points
 
