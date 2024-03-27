@@ -485,7 +485,7 @@ class Annotator:
             color = random.random()
             # check empty nodes
             nodes = [self.G.nodes[i] for i in cc]
-            for nid,node in zip(list(cc),node):
+            for nid,node in zip(list(cc),nodes):
                 if node == {}:
                     delete_nodes(str(self.db_path.value),[nid])
                     continue
