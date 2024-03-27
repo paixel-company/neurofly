@@ -146,12 +146,12 @@ class Seger():
         self.bg_thres = bg_thres
 
 
-    def preprocess(self,img,percentiles=[0.001,0.9999]):
-        # input img [0,65535]
-        # output img [0,1]
+    def preprocess(self,img,percentiles=[0.1,1.0]):
+        # input img nparray [0,65535]
+        # output img tensor [0,1]
         flattened_arr = np.sort(img.flatten())
         clip_low = int(percentiles[0] * len(flattened_arr))
-        clip_high = int(percentiles[1] * len(flattened_arr))
+        clip_high = int(percentiles[1] * len(flattened_arr))-1
         if flattened_arr[clip_high]<self.bg_thres:
             return None
         clipped_arr = np.clip(img, flattened_arr[clip_low], flattened_arr[clip_high])
@@ -163,6 +163,10 @@ class Seger():
         img = torch.from_numpy(img)
         img = img.unsqueeze(0).unsqueeze(0)
         return img
+
+
+    def auto_contrast(self,img):
+        pass
 
 
     def postprocess(self,mask,min_size=50):
@@ -277,7 +281,7 @@ class Seger():
         mask[:, :, :z_border] = 0
         mask[:, :, -z_border:] = 0
 
-        mask = binary_dilation(mask,footprint=ball(2))
+        # mask = binary_dilation(mask,footprint=ball(1))
         # mask = binary_erosion(mask,footprint=ball(3))
 
         skel = skeletonize(mask)
@@ -296,16 +300,16 @@ class Seger():
             graph.remove_edges_from(set(graph.edges) - set(spanning_tree.edges))
             branch_nodes = [node for node, degree in graph.degree() if degree >= 3]
 
-            # branch_nbrs = []
-            # for node in branch_nodes:
-            #     branch_nbrs += list(graph.neighbors(node))
-            # graph.remove_nodes_from(branch_nodes)
+            branch_nbrs = []
+            for node in branch_nodes:
+                branch_nbrs += list(graph.neighbors(node))
+            graph.remove_nodes_from(branch_nbrs)
 
             graph.remove_nodes_from(branch_nodes)
             connected_components = list(nx.connected_components(graph))
 
             for nodes in connected_components:
-                if len(nodes)<=interval:
+                if len(nodes)<=interval*2:
                     continue
                 subgraph = graph.subgraph(nodes).copy()
                 end_nodes = [node for node, degree in subgraph.degree() if degree == 1]
@@ -400,15 +404,16 @@ if __name__ == '__main__':
 
     # seger = Seger('src/weights/rm009_tiny.pth',bg_thres=150)
     # seger = Seger('src/weights/universal_dumpy.pth',bg_thres=150)
-    # seger = Seger('src/weights/universal_tiny.pth',bg_thres=150)
-    seger = Seger('src/weights/z002_tiny.pth',bg_thres=150)
+    seger = Seger('src/weights/universal_medium.pth',bg_thres=150)
+    # seger = Seger('src/weights/z002_tiny.pth',bg_thres=150)
+    # seger = Seger('src/weights/lzh_tiny.pth',bg_thres=150)
 
     from ntools.neuron import save_segs
     from ntools.read_ims import Image
 
-    # 
+    # '''
     image_path = '/home/bean/workspace/data/z002.ims'
-    roi = [5280,4000,8480,500,500,500] # cell body
+    # roi = [5280,4000,8480,500,500,500] # cell body
     # roi = [3500,6200,7400,500,500,500] # cells 200
     # roi = [3800,5300,11000,500,500,500] # cells 300
     # roi = [7000,6689,4500,500,500,500] # vessel with bright noise
@@ -420,7 +425,9 @@ if __name__ == '__main__':
     # roi = [7000,5200,7600,500,500,500] # weak signal
     # roi = [2300,3600,10000,500,500,500] # weak cortex
     # roi = [3050,4300,8400,128,128,128]
-    # 
+    # roi = [3000,4200,8000,300,300,300] # missed segment
+    roi = [4400,5900,7200,500,500,500] # close axons
+    # '''
 
 
     '''
@@ -435,8 +442,8 @@ if __name__ == '__main__':
     '''
     image_path = '/home/bean/workspace/data/ROI1.ims'
     offset = [51500,22500,59400]
-    roi = [52400,24300,64000,500,500,500]
-    # roi = [54700,23600,60000,500,500,500]
+    # roi = [52400,24300,64000,500,500,500]
+    roi = [54700,23600,60000,500,500,500]
     roi[0:3] = [i-j for i,j in zip(roi[0:3],offset)]
     '''
 

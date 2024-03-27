@@ -314,7 +314,7 @@ class Annotator:
         
         self.image_layer.data = image
         self.image_layer.reset_contrast_limits()
-        self.image_layer.contrast_limits = [min_value//2,mean_value+std_value]
+        self.image_layer.contrast_limits = [mean_value//2,mean_value+std_value]
         self.image_layer.translate = translate
         self.viewer.camera.center = c_coord
         self.viewer.layers.selection.active = self.point_layer
@@ -470,6 +470,7 @@ class Annotator:
             self.panorama_image.visible = True
             self.panorama_image.reset_contrast_limits()
 
+
         connected_components = list(nx.connected_components(self.G))
 
         coords = []
@@ -484,10 +485,9 @@ class Annotator:
             color = random.random()
             # check empty nodes
             nodes = [self.G.nodes[i] for i in cc]
-            for i,node in enumerate(nodes):
+            for nid,node in zip(list(cc),node):
                 if node == {}:
-                    node_id = cc[i]
-                    delete_nodes(str(self.db_path.value),[node_id])
+                    delete_nodes(str(self.db_path.value),[nid])
                     continue
                 coords.append(node['coord'])
                 nids.append(node['nid'])
@@ -710,3 +710,4 @@ def main_function():
 
 if __name__ == '__main__':
     main_function()
+

@@ -247,7 +247,7 @@ def get_size(path):
 
 
 if __name__ == '__main__':
-    db_path = 'tests/graph_test.db'
+    db_path = 'tests/z002_re.db'
     nodes = read_nodes(db_path)
     import numpy as np
     coords = []
@@ -255,4 +255,4 @@ if __name__ == '__main__':
         coords.append(node['coord'])
     coords = np.array(coords)
     for i in range(3):
-        print(np.min(coords[:,i]),np.max(coords[:,i]))
+        print(np.min(coords[:,i]),np.max(coords[:,i]-np.min(coords[:,i])))
