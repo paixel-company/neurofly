@@ -1,7 +1,8 @@
-from ntools.dbio import read_edges, read_nodes, delete_nodes, add_nodes, add_edges, check_node, uncheck_nodes
+from ntools.dbio import read_edges, read_nodes, delete_nodes, add_nodes, add_edges, check_node, uncheck_nodes, augment_nodes, change_type
 from magicgui import magicgui, widgets
 from ntools.read_ims import Image as Image_ims
 from ntools.read_zarr import Image as Image_zarr
+from ntools.graph_cut import edges_to_be_cut
 from scipy.spatial import KDTree
 from napari.utils.notifications import show_info
 import numpy as np
@@ -14,7 +15,6 @@ import random
 class PushButton(widgets.PushButton):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.history = []
 
 
 class Annotator:
@@ -44,7 +44,6 @@ class Annotator:
             'edges': []
         }
         self.added_nodes = []
-        self.node_list = [] # for proofreading, list of node ids
         # ----------------------------------
         napari.run()
 
@@ -59,6 +58,8 @@ class Annotator:
         self.viewer.bind_key('w', self.connect_one_nearest,overwrite=True)
         self.viewer.bind_key('e', self.connect_two_nearest,overwrite=True)
         self.viewer.bind_key('b', self.last_task,overwrite=True)
+        self.viewer.bind_key('s', self.label_soma,overwrite=True)
+        self.viewer.bind_key('a', self.label_ambiguous,overwrite=True)
 
         self.panorama_points.mouse_drag_callbacks.append(self.node_selection)
         self.point_layer.mouse_drag_callbacks.append(self.node_operations)
@@ -70,13 +71,15 @@ class Annotator:
         self.image_path = widgets.FileEdit(label="image path")
         self.db_path = widgets.FileEdit(label="database path")
         self.image_switch = widgets.CheckBox(value=False,text='show panorama image')
+        self.segs_switch = widgets.CheckBox(value=True,text='show/hide long segments')
         self.refresh_panorama_button = widgets.PushButton(text="refresh panorama")
 
-        self.len_thres = widgets.Slider(label="min length", value=10, min=0, max=200)
+        self.min_length = widgets.Slider(label="min_length", value=10, min=0, max=200)
+        self.len_thres = widgets.Slider(label="length thres", value=20, min=0, max=9999)
         self.min_size = widgets.Slider(label="min size", value=3, min=0, max=10)
         self.max_size = widgets.Slider(label="max size", value=10, min=1, max=20)
-        self.mode_switch = widgets.PushButton(text="switch mode (q)")
-
+        self.mode_switch = PushButton(text="switch mode (q)")
+        self.mode_switch.mode = 'panorama'
 
         self.selected_node = widgets.LineEdit(label="node selection", value=0)
         self.total_length = widgets.LineEdit(label="total length", value=0)
@@ -87,7 +90,10 @@ class Annotator:
         self.recover_button = widgets.PushButton(text="recover (r)")
         # next task is just ask for new task without submitting
         self.submit_button = PushButton(text="submit (f)")
+        self.submit_button.history = []
         self.proofreading_switch = widgets.CheckBox(value=False,text='Proofreading')
+        self.soma_buttom = widgets.PushButton(text="label/unlabel soma (s)")
+        self.ambiguous_button = widgets.PushButton(text="label/unlabel ambiguous (a)")
         # ---------------------------
 
         # ----- widgets bindings -----
@@ -98,6 +104,8 @@ class Annotator:
         self.refresh_button.clicked.connect(self.refresh)
         self.recover_button.clicked.connect(self.recover)
         self.return_button.clicked.connect(self.last_task)
+        self.soma_buttom.clicked.connect(self.label_soma)
+        self.ambiguous_button.clicked.connect(self.label_ambiguous)
         # ---------------------------
 
         self.container = widgets.Container(widgets=[
@@ -105,6 +113,8 @@ class Annotator:
             self.image_path,
             self.db_path,
             self.image_switch,
+            self.segs_switch,
+            self.min_length,
             self.len_thres,
             self.min_size,
             self.max_size,
@@ -118,11 +128,36 @@ class Annotator:
             self.refresh_button,
             self.return_button,
             self.recover_button,
+            self.soma_buttom,
+            self.ambiguous_button,
             self.submit_button
             ])
 
         self.viewer.window.add_dock_widget(self.container, area='right')
 
+
+
+    def label_soma(self,viewer):
+        node_id = int(self.selected_node.value)
+        if self.G.nodes[node_id]['type'] == 0:
+            change_type(str(self.db_path.value),node_id,1)
+            self.G.nodes[node_id]['type'] = 1
+        elif self.G.nodes[node_id]['type'] == 1:
+            change_type(str(self.db_path.value),node_id,0)
+            self.G.nodes[node_id]['type'] = 0
+        self.refresh(self.viewer)
+        
+
+    def label_ambiguous(self,viewer):
+        node_id = int(self.selected_node.value)
+        if self.G.nodes[node_id]['type'] == 0:
+            change_type(str(self.db_path.value),node_id,8)
+            self.G.nodes[node_id]['type'] = 8
+            show_info("{node_id} labeled as ambiguous")
+        elif self.G.nodes[node_id]['type'] == 8:
+            change_type(str(self.db_path.value),node_id,0)
+            self.G.nodes[node_id]['type'] = 0
+            show_info("{node_id} labeled as normal")
 
     def connect_one_nearest(self,viewer):
         # find one closest neighbour point, add it to self.connected_nodes
@@ -164,8 +199,8 @@ class Annotator:
 
 
     def switch_mode(self,viewer):
-        mode = 'panorama' if self.panorama_points.visible == True else 'labeling'
-        if mode == 'panorama':
+        if self.mode_switch.mode == 'panorama':
+            self.mode_switch.mode = 'labeling'
             self.panorama_points.visible = False
             self.panorama_image.visible = False
             self.point_layer.visible = True
@@ -176,13 +211,13 @@ class Annotator:
             self.refresh(self.viewer)
         else:
             # remove current recordings
+            self.mode_switch.mode = 'panorama'
             self.connected_nodes = []
             self.delected_nodes = {
                 'nodes': [],
                 'edges': []
             }
             self.added_nodes = []
-            self.node_list = []
             self.refresh_panorama()
 
 
@@ -198,6 +233,7 @@ class Annotator:
             last_node = self.submit_button.history[-1]
             self.G.nodes[last_node]['checked'] = -1
             self.selected_node.value = str(last_node)
+            self.connected_nodes = []
             self.submit_button.history.remove(last_node)
             self.refresh_edge_layer()
             self.refresh(self.viewer)
@@ -226,7 +262,7 @@ class Annotator:
         
         self.update_meter(len(connected_component),len(unchecked_nodes))
 
-        if len(unchecked_nodes)==0:
+        if len(unchecked_nodes)==0 and self.proofreading_switch.value == False:
             show_info('all nodes checked, run proofreading')
             unchecked_nodes.append(int(self.selected_node.value))
 
@@ -267,6 +303,9 @@ class Annotator:
                     sizes.append(2)
                 else:
                     sizes.append(1)
+                if node['type']==1:
+                    sizes.pop(-1)
+                    sizes.append(4)
 
         for c_node in nbrs:
             if not self.G.has_node(c_node):
@@ -427,13 +466,18 @@ class Annotator:
 
 
     def refresh_panorama(self):
+        if self.mode_switch.mode == 'labeling':
+            show_info('switch to panorama mode first')
+            return
         if self.G is None:
+            # check if nodes table has type column
+            augment_nodes(self.db_path.value)
             # load graph and kdtree from database
             nodes = read_nodes(self.db_path.value)
             edges = read_edges(self.db_path.value)
             self.G = nx.Graph()
             for node in nodes:
-                self.G.add_node(node['nid'], nid = node['nid'],coord = node['coord'], nbrs = node['nbrs'], checked = node['checked'])
+                self.G.add_node(node['nid'], nid = node['nid'],coord = node['coord'], type = node['type'], checked = node['checked'])
 
             for edge in edges:
                 self.G.add_edge(edge['src'],edge['des'],creator = edge['creator'])
@@ -480,7 +524,9 @@ class Annotator:
 
 
         for cc in connected_components:
-            if len(cc)<int(self.len_thres.value):
+            if (len(cc)<int(self.len_thres.value) and self.segs_switch.value == True) or len(cc) <= self.min_length.value:
+                continue
+            if (len(cc)>=int(self.len_thres.value) and self.segs_switch.value == False) or len(cc) <= self.min_length.value:
                 continue
             color = random.random()
             # check empty nodes
@@ -488,6 +534,7 @@ class Annotator:
             for nid,node in zip(list(cc),nodes):
                 if node == {}:
                     delete_nodes(str(self.db_path.value),[nid])
+                    self.G.remove_node(nid)
                     continue
                 coords.append(node['coord'])
                 nids.append(node['nid'])
@@ -519,6 +566,8 @@ class Annotator:
         self.panorama_points.visible = True
         if self.image_switch.value == True:
             self.panorama_image.visible = True
+        else:
+            self.panorama_image.visible = False
 
         self.point_layer.visible = False 
         self.image_layer.visible = False
@@ -698,16 +747,27 @@ class Annotator:
             while self.G.has_node(new_id):
                 new_id+=1
             
-            self.G.add_node(new_id, nid = new_id, coord = max_point, nbrs = [], checked = 0)
+            self.G.add_node(new_id, nid = new_id, coord = max_point, type = 0, checked = 0)
             self.added_nodes.append(new_id)
 
             self.refresh(self.viewer)
             self.viewer.layers.selection.active = self.image_layer
+    
+
+    def cut_neurons(self):
+        # find somas according to degree of nodes
+        self.delected_nodes = {
+                'nodes': [],
+                'edges': []
+            }
+        forest = nx.node_connected_component(self.G, int(self.selected_node.value))
+        forest = self.G.subgraph(forest)
+
 
 
 def main_function():
     anno = Annotator()
 
+
 if __name__ == '__main__':
     main_function()
-

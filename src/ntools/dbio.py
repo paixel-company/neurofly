@@ -16,10 +16,10 @@ def segs2db(segs,path):
         {
             nid: int, PRIMARY KEY
             coord: str,
-            nbrs: str,
+            type: int,
             checked: int
         }
-    edge
+    edge:
         {
             src: int, 
             des: int,
@@ -47,7 +47,7 @@ def segs2db(segs,path):
             CREATE TABLE IF NOT EXISTS nodes(
                 nid INTEGER PRIMARY KEY,
                 coord TEXT,
-                nbrs TEXT,
+                type INTEGER,
                 checked INTEGER
             )
             '''
@@ -86,7 +86,6 @@ def segs2db(segs,path):
     nodes = [] # [nid,coord,nbr_ids]
     edges = [] # [source_id,target_id]
 
-    # TODO: append nbrs to node[]
     for seg in segs:
         points = seg['sampled_points']
         count+=1
@@ -105,8 +104,8 @@ def segs2db(segs,path):
     
     # add nodes and edges to the database
     for node in nodes:
-        cursor.execute(f"INSERT INTO nodes (nid, coord, nbrs, checked) VALUES (?, ?, ?, ?)",
-                    (node[0], sqlite3.Binary(str(node[1]).encode()), sqlite3.Binary(str(node[2]).encode()), 0))
+        cursor.execute(f"INSERT INTO nodes (nid, coord, type, checked) VALUES (?, ?, ?, ?)",
+                    (node[0], sqlite3.Binary(str(node[1]).encode()), 0, 0))
 
     for edge in edges:
         cursor.execute(f"INSERT INTO edges (src, des, date, creator) VALUES (?, ?, ?, ?)",
@@ -143,7 +142,7 @@ def read_nodes(db_path):
         data = {
             'nid': row[0],
             'coord': eval(row[1]),
-            'nbrs': eval(row[2]),
+            'type': row[2],
             'checked': row[3],
         }
         points.append(data)
@@ -156,7 +155,7 @@ def read_edges(db_path):
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM edges")
     rows = cursor.fetchall()
-    points = []
+    edges = []
     for row in rows:
         data = {
             'src': row[0],
@@ -164,9 +163,44 @@ def read_edges(db_path):
             'date': row[2],
             'creator': row[3],
         }
-        points.append(data)
+        edges.append(data)
     conn.close()
-    return points
+    return edges
+
+
+def augment_nodes(db_path):
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    table_name = 'nodes'
+    cursor.execute(f"PRAGMA table_info({table_name})")
+    columns_info = cursor.fetchall()
+    column_names = [col_info[1] for col_info in columns_info]
+    conn.close()
+    if 'type' in column_names:
+        return
+        
+    # replace nbr column with type column of nodes table
+    nodes = read_nodes(db_path)
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    drop_command = f"DROP TABLE IF EXISTS nodes;"
+    cursor.execute(drop_command)
+
+    cursor.execute(
+            '''
+            CREATE TABLE IF NOT EXISTS nodes(
+                nid INTEGER PRIMARY KEY,
+                coord TEXT,
+                type INTEGER,
+                checked INTEGER
+            )
+            '''
+        )
+    for node in nodes:
+        cursor.execute(f"INSERT INTO nodes (nid, coord, type, checked) VALUES (?, ?, ?, ?)",(node['nid'], sqlite3.Binary(str(node['coord']).encode()), 0, node['checked'])) 
+
+    conn.commit()
+    conn.close()
 
 
 def delete_nodes(path,node_ids):
@@ -182,13 +216,12 @@ def delete_nodes(path,node_ids):
 
 def add_nodes(path,nodes):
     # given a list of nodes, write them to node table
-    # nodes: [{'nid','coord','nbrs','checked'}]
+    # nodes: [{'nid','coord','type','checked'}]
     conn = sqlite3.connect(path)
     cursor = conn.cursor()
     for node in nodes:
-        cursor.execute(f"INSERT OR IGNORE INTO nodes (nid, coord, nbrs, checked) VALUES (?, ?, ?, ?)",
-                    (node['nid'], sqlite3.Binary(str(node['coord']).encode()), sqlite3.Binary(str(node['nbrs']).encode()), 0))
-
+        cursor.execute(f"INSERT OR IGNORE INTO nodes (nid, coord, type, checked) VALUES (?, ?, ?, ?)",
+                    (node['nid'], sqlite3.Binary(str(node['coord']).encode()), node['type'], 0))
     conn.commit()
     conn.close()
 
@@ -234,6 +267,17 @@ def uncheck_nodes(path,nids):
     conn.close()
 
 
+def change_type(path,nid,type):
+    # given list of node ids, label them as unchecked
+    conn = sqlite3.connect(path)
+    cursor = conn.cursor()
+
+    cursor.execute("UPDATE nodes SET type = ? WHERE nid = ?", (type, nid))
+
+    conn.commit()
+    conn.close()
+
+
 def get_size(path):
     if not os.path.exists(path):
         return 0
@@ -247,12 +291,17 @@ def get_size(path):
 
 
 if __name__ == '__main__':
-    db_path = 'tests/z002_re.db'
+    # db_path = 'tests/z002_re.db'
+    # nodes = read_nodes(db_path)
+    # import numpy as np
+    # coords = []
+    # for node in nodes:
+    #     coords.append(node['coord'])
+    # coords = np.array(coords)
+    # for i in range(3):
+    #     print(np.min(coords[:,i]),np.max(coords[:,i]-np.min(coords[:,i])))
+
+    db_path = 'tests/z002.db'
+    augment_nodes(db_path)
     nodes = read_nodes(db_path)
-    import numpy as np
-    coords = []
-    for node in nodes:
-        coords.append(node['coord'])
-    coords = np.array(coords)
-    for i in range(3):
-        print(np.min(coords[:,i]),np.max(coords[:,i]-np.min(coords[:,i])))
+    print(nodes)
