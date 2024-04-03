@@ -211,6 +211,7 @@ class Annotator:
             self.refresh(self.viewer)
         else:
             # remove current recordings
+            self.submit_result(self.viewer)
             self.mode_switch.mode = 'panorama'
             self.connected_nodes = []
             self.delected_nodes = {
@@ -556,6 +557,8 @@ class Annotator:
             'nids': np.array(nids)
         }
 
+
+        self.panorama_points.visible = True
         self.panorama_points.data = np.array(coords)
         self.panorama_points.properties = properties
         self.panorama_points.face_colormap = 'hsl'
@@ -563,7 +566,7 @@ class Annotator:
         self.panorama_points.size = sizes
         self.panorama_points.selected_data = []
 
-        self.panorama_points.visible = True
+
         if self.image_switch.value == True:
             self.panorama_image.visible = True
         else:
