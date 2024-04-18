@@ -20,5 +20,4 @@ def show_segs_as_instances(segs,viewer,size=0.8):
     }
     print(f'num of points: {len(points)}')
     point_layer = viewer.add_points(np.array(points),ndim=3,face_color='colors',size=size,edge_color='colors',shading='spherical',edge_width=0,properties=properties,face_colormap='turbo')
-
-
+    

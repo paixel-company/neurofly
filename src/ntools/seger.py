@@ -421,14 +421,14 @@ if __name__ == '__main__':
     # roi = [6500,7300,10500,500,500,500] # vessel
     # roi = [2800,3100,10400,500,500,500] # cortex
     # roi = [3800,3200,7100,500,500,500] # sparse axon
-    # roi = [3200,4000,7700,500,500,500] # cortex
+    roi = [3200,4000,7700,500,500,500] # cortex
     # roi = [7000,5200,7600,500,500,500] # weak signal
     # roi = [2300,3600,10000,500,500,500] # weak cortex
     # roi = [3050,4300,8400,128,128,128]
     # roi = [3000,4200,8000,300,300,300] # missed segment
     # roi = [4400,5900,7200,500,500,500] # close axons
     # roi = [3700,4300,7800,300,300,300] # axons
-    roi = [5900,2000,6000,500,500,500] # weak cortex signal
+    # roi = [5900,2000,6000,500,500,500] # weak cortex signal
     # '''
 
 
@@ -447,6 +447,12 @@ if __name__ == '__main__':
     # roi = [52400,24300,64000,500,500,500]
     roi = [54700,23600,60000,500,500,500]
     roi[0:3] = [i-j for i,j in zip(roi[0:3],offset)]
+    '''
+
+    
+    '''
+    image_path = '/home/bean/workspace/data/mouse_3.ims'
+    roi = [7000,5600,10000,300,300,300]
     '''
 
     segs = seger.process_whole(image_path, roi=roi)

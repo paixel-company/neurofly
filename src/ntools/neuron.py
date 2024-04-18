@@ -300,7 +300,7 @@ class Neuron():
 
 
 
-def show_neurons(neurons,viewer=None):
+def show_neurons(neurons,viewer=None,point_size=5,edge_width=3):
     from tqdm import tqdm
     if viewer == None:
         import napari
@@ -342,8 +342,8 @@ def show_neurons(neurons,viewer=None):
     vectors = np.array(vectors)
     points = np.array(points)
 
-    vector_layer = viewer.add_vectors(vectors,properties=vector_properties,name='connections',edge_colormap='hsv',edge_color='color',edge_width=0.5,opacity=1)
-    point_layer = viewer.add_points(points,properties=point_properties,size=1,name='points',face_colormap='plasma',face_color='color')
+    vector_layer = viewer.add_vectors(vectors,properties=vector_properties,name='connections',edge_colormap='hsv',edge_color='color',edge_width=edge_width,opacity=1)
+    point_layer = viewer.add_points(points,properties=point_properties,size=point_size,name='points',face_colormap='plasma',face_color='color')
 
 
 

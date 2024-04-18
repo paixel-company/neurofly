@@ -290,6 +290,9 @@ def get_size(path):
     return count
 
 
+
+
+
 if __name__ == '__main__':
     # db_path = 'tests/z002_re.db'
     # nodes = read_nodes(db_path)
@@ -301,7 +304,10 @@ if __name__ == '__main__':
     # for i in range(3):
     #     print(np.min(coords[:,i]),np.max(coords[:,i]-np.min(coords[:,i])))
 
-    db_path = 'tests/z002.db'
-    augment_nodes(db_path)
-    nodes = read_nodes(db_path)
-    print(nodes)
+    # db_path = 'tests/z002.db'
+    # augment_nodes(db_path)
+    # nodes = read_nodes(db_path)
+    # print(nodes)
+
+    db_path = 'tests/z002_final.db'
+    save_lyp(db_path,template_path='src/weights/template.lyp')

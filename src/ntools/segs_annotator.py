@@ -363,7 +363,7 @@ class Annotator:
     def recover(self, viewer):
         # recover the preserved delected nodes if exists
         for node in self.delected_nodes['nodes']:
-            self.G.add_node(node['nid'], nid = node['nid'],coord = node['coord'], nbrs = node['nbrs'], checked = 0)
+            self.G.add_node(node['nid'], nid = node['nid'],coord = node['coord'], type = node['type'], checked = 0)
         for edge in self.delected_nodes['edges']:
             self.G.add_edge(edge[0],edge[1])
 
@@ -388,7 +388,6 @@ class Annotator:
 
     def update_local(self):
         # label the center node of current task as checked in self.G
-        # update database
         # update canvas and local graph
         # if there's new nodes, update kdtree
         # run refresh to updata canvas
@@ -400,6 +399,8 @@ class Annotator:
         coords = []
         coord_ids = []
         if len(self.added_nodes)!=0:
+            # added_nodes already in self.G, not in self.kdtree
+            # TODO fix bug that node has no 'coord'
             for i,node in enumerate(list(self.G)):
                 coords.append(self.G.nodes[node]['coord'])
                 coord_ids.append(self.G.nodes[node]['nid'])
@@ -420,9 +421,9 @@ class Annotator:
 
     def update_database(self):
         # update database according to 'delected_nodes', 'added_nodes', 'connected_nodes'
-        # deleted_nodes['nodes']: [{'nid','coord','nbrs','checked'}]
+        # deleted_nodes['nodes']: [{'nid','coord','type','checked'}]
         # deleted_nodes['edges']: [[src,tar]]
-        # added_nodes: [{'nid','coord','nbrs','checked'}]
+        # added_nodes: [{'nid','coord','type','checked'}]
         # connected_nodes: [nid,nid,...]
         # 1. remove nodes and edges in delected_nodes
         # 2. add new nodes to database
@@ -755,17 +756,26 @@ class Annotator:
 
             self.refresh(self.viewer)
             self.viewer.layers.selection.active = self.image_layer
-    
 
-    def cut_neurons(self):
-        # find somas according to degree of nodes
-        self.delected_nodes = {
-                'nodes': [],
-                'edges': []
-            }
-        forest = nx.node_connected_component(self.G, int(self.selected_node.value))
-        forest = self.G.subgraph(forest)
 
+
+    def save_lyp(self):
+        '''
+        load lyp template
+        get all large connected components, save each as a single .lyp file
+        save undirected graph, i.e. add all neighbours to 'parent_ids' except soma node
+        for soma node, add "#Soma" to 'message'
+        node template:
+        {
+            "creator_id": 0,
+            "group_id": "1",
+            "id": "5030239",
+            "message": "", # if soma node, "#Soma" else ""
+            "parent_ids": "5030238",
+            "position": "49722.937 32652.702 44400.602",
+            "timestamp": "1693814131" #unix timestamp
+        }
+        '''
 
 
 def main_function():

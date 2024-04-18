@@ -56,15 +56,3 @@ class Image():
         z_slice = slice(z_min,z_max) 
         return self.image[x_slice,y_slice,z_slice]
 
-
-
-# import napari
-# viewer = napari.Viewer()
-# image_path = '/home/bean/workspace/data/test.zarr'
-# image = Image(image_path)
-# center = [i+j for i,j in zip(image.roi[:3],image.roi[3:])]
-# SIZE = 32
-# roi = [i-SIZE for i in center] + [SIZE*2,SIZE*2,SIZE*2]
-# img = image.from_roi(roi)
-# viewer.add_image(img)
-# napari.run()
