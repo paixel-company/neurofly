@@ -85,6 +85,121 @@ def RMF(
     return P, RMF_T, RMF_N, RMF_B, N ,k
 
 
+def gram_schmidt_orth(eT, eN1):
+    """
+    As errors can accumulate, this Code makes sure, that eT, eN1 and eN2 are still an ONS
+    For this eT is assumed to be correct (up to normalization), eN1 is calculated by Gram-Schmidt
+    and eN2 by vector cross product
+    => There might be new errors due to the initial assumption of eT being correct
+      (RoboEM is assumed to be able to deal with these and post-hoc correct them)
+    """
+    eT /= np.sqrt(np.sum(eT ** 2, axis=-1)).reshape(-1, 1, 1)
+    eN1 /= np.sqrt(np.sum(eN1 ** 2, axis=-1)).reshape(-1, 1, 1)
+    eN1 -= np.sum(eN1 * eT, axis=-1).reshape(-1, 1, 1) * eT
+    eN1 /= np.sqrt(np.sum(eN1 ** 2, axis=-1)).reshape(-1, 1, 1)
+    eN2 = np.cross(eT, eN1, axis=-1)
+    eN2 /= np.sqrt(np.sum(eN2 ** 2, axis=-1)).reshape(-1, 1, 1)
+    return eT, eN1, eN2
+
+
+
+def exact_parabola_integration_step(tripod, k, vmin=0.1, stepsize_factor=1.0, base_step=11.24):
+    """
+    Assuming an exact parabola based on the Bishop curvatures k1, k2, we can write down the Frenet frame and from this
+    also the Bishop frame of this parabola analytically (note that it's not arc length parameterized!):
+    r = r0 + s t0 + s^2/2 k0
+    Frenet frame:
+    => kappa(s) = kappa0 / (1+(s*kappa0)^2)^(3/2), with kappa0 = sqrt(k1^2 + k2^2)
+        | Define norm = 1/sqrt(1+(s*kappa0)^2)
+        t (s) = norm * ( t0  + s * k0 )
+        n(s) = norm * ( k0/kappa0 - s * kappa0 * t0  )
+        b(s) = b0
+    Bishop frame:
+    using n1 =  cos(phi) n + sin(phi) b
+          n2 = -sin(phi) n + cos(phi) b
+          <=>
+          n = cos(phi) n1 - sin(phi) n2
+          with cos(phi) = k1/kappa; sin(phi) = -k2/kappa
+
+          (Note that for a parabola the torsion tau = 0 and therefore dphi/ds = -tau = 0 => phi = const.)
+
+    we get:
+        n1(s) = cos(phi) * norm * ( n - s * kappa0 * t0 )
+               +sin(phi) * b
+
+    :param tripod: [Nx4x3] 4: (r0, eT=t0, eN1=n10, eN2=n20)
+    :param k: [Nx2] 2:(k1, k2) Bishop curvatures
+    :param vmin: minimum step size (in units of base_step)
+    :param speed_factor: factor on base_step
+    :param base_step: basis step size if k = 0
+    :return: tripod(0 + v)
+    """
+    tripod = tripod.astype('float64')
+    k = k.astype('float64')
+
+    # pre calculations and reshapes
+    r, eT, eN1, eN2 = np.hsplit(tripod, 4)
+    k1, k2 = np.hsplit(k, 2) # bishop curvature vector (projection of k)
+    kappa_sq = k1 ** 2 + k2 ** 2
+    kappa = np.sqrt(kappa_sq) # curvature
+
+    # Compute Frenet from Bishop frame and curvatures
+    # TODO: check if below formulas are
+    #  * correct (check e.g. whether below formulas yield the same up to +O(v^2) as Euler step) AND
+    #  * do not contain analytically reducible computations AND
+    #  * numerically stable - what happens for kappa close or equal to 0?
+
+    phi = np.arccos(np.clip(k1 / kappa, a_min=-1, a_max=1))
+    cosphi = np.cos(phi).reshape(-1, 1, 1)
+    sinphi = np.sin(phi).reshape(-1, 1, 1)
+    eN = cosphi * eN1 - sinphi * eN2  # Bishop normal
+    eN /= np.sqrt(np.sum(eN ** 2, axis=-1)).reshape(-1, 1, 1)
+    eB = np.cross(eT, eN, axis=-1)
+
+
+    v = stepsize_factor * base_step / (1.0 + 500 * kappa)
+    v = np.maximum(vmin * base_step, v).reshape([-1, 1, 1])
+    v_sq = v**2
+
+    k1 = k1.reshape([-1, 1, 1])
+    k2 = k2.reshape([-1, 1, 1])
+    kappa = kappa.reshape([-1, 1, 1])
+    kappa_sq = kappa_sq.reshape([-1, 1, 1])
+
+    k = k1 * eN1 + k2 * eN2
+    norm = 1 / np.sqrt(1 + v_sq * kappa_sq)
+
+    # "Parabola step" - simultaneous updates
+    dr = v * eT + v_sq / 2.0 * k
+    r, eT, eN1 = (
+            r + dr,
+            norm * (eT + v * k),
+            cosphi * norm * (eN - v * kappa * eT) + sinphi * eB
+    )
+
+    act_step_size = np.sqrt(np.sum(dr**2, axis=-1)).reshape([-1])
+
+    # Apply Gram-Schmidt Orthonormalization
+    eT, eN1, eN2 = gram_schmidt_orth(eT, eN1)
+
+    return np.concatenate((r, eT, eN1, eN2), 1), act_step_size
+
+
+def predict_next_frame(position,frame,curvature,step_size=5):
+    '''
+    Given position, frame and predicted curvature, calculate parabola and sample next frame from it according to given step size.
+    1. project curvature to n1, n2
+    2. write down taylor expansion: r(s) = r0 + s*t0 + s^2*k/2
+    3. calculate velocity and get dr
+    4. sample next position according to r(s) and dr
+    5. generate new frame
+    
+    positon: r, in 
+    frame: (t,n1,n2)
+    curvature: k1,k2, parameterizing curvature vector k = k1*n1+k2*n2
+    '''
+
+
 if __name__ == '__main__':
     import json
     import napari
@@ -102,7 +217,7 @@ if __name__ == '__main__':
             for node in seg:
                 traj.append(node['pos'])
             trajs.append(traj)
-    
+
 
     points = []
     curvatures = [] 
@@ -152,3 +267,4 @@ if __name__ == '__main__':
     viewer.add_vectors(rmf_n2v, edge_width=0.1, length=2, vector_style='arrow', edge_color='orange', name='N2')
     viewer.add_vectors(curvature, edge_width=0.1, length=10, vector_style='arrow', edge_color='green', name='curvature')
     napari.run()
+
