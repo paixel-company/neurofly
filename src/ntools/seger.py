@@ -377,7 +377,7 @@ class Seger():
                 (tg_size-y1_pad, tg_size-y2_pad),
                 (tg_size-z1_pad, tg_size-z2_pad)
             ]
-            
+
             # if img.shape%block_size != 0, pad to target size
 
             ap = [] # additional padding

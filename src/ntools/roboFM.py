@@ -1,7 +1,9 @@
 import numpy as np
 from scipy.interpolate import splprep, splev
+from einops import reduce, einsum
 
-def FSM(
+
+def get_frenet_frame(
     ctrl_p: np.ndarray,
     degree: int=4,
     sample_num: int=20
@@ -73,7 +75,7 @@ def RMF(
     '''
         Rotation-Minimizing Frame
     '''
-    P,T,N,B,k = FSM(ctrl_p, degree, sample_num)
+    P,T,N,_,k = get_frenet_frame(ctrl_p, degree, sample_num)
     RMF_frames = double_reflection_method(P, T, N[0])
     RMF_T = RMF_frames[:,0,:]
     RMF_N = RMF_frames[:,1,:]
@@ -123,11 +125,10 @@ def exact_parabola_integration_step(tripod, k, vmin=0.1, stepsize_factor=1.0, ba
 
           (Note that for a parabola the torsion tau = 0 and therefore dphi/ds = -tau = 0 => phi = const.)
 
-    we get:
         n1(s) = cos(phi) * norm * ( n - s * kappa0 * t0 )
                +sin(phi) * b
 
-    :param tripod: [Nx4x3] 4: (r0, eT=t0, eN1=n10, eN2=n20)
+    :param tripod: [Nx4x3] 4: (r0, eT=t0, eN1=n10, eN2=n20), r is position vector, eT, eN1, eN2 are bishop vectors (all uniformed)
     :param k: [Nx2] 2:(k1, k2) Bishop curvatures
     :param vmin: minimum step size (in units of base_step)
     :param speed_factor: factor on base_step
@@ -152,7 +153,7 @@ def exact_parabola_integration_step(tripod, k, vmin=0.1, stepsize_factor=1.0, ba
     phi = np.arccos(np.clip(k1 / kappa, a_min=-1, a_max=1))
     cosphi = np.cos(phi).reshape(-1, 1, 1)
     sinphi = np.sin(phi).reshape(-1, 1, 1)
-    eN = cosphi * eN1 - sinphi * eN2  # Bishop normal
+    eN = cosphi * eN1 - sinphi * eN2
     eN /= np.sqrt(np.sum(eN ** 2, axis=-1)).reshape(-1, 1, 1)
     eB = np.cross(eT, eN, axis=-1)
 
@@ -185,47 +186,62 @@ def exact_parabola_integration_step(tripod, k, vmin=0.1, stepsize_factor=1.0, ba
     return np.concatenate((r, eT, eN1, eN2), 1), act_step_size
 
 
-def predict_next_frame(position,frame,curvature,step_size=5):
+def predict_next_frame(position,frame,k,step_size=5):
     '''
     Given position, frame and predicted curvature, calculate parabola and sample next frame from it according to given step size.
     1. project curvature to n1, n2
-    2. write down taylor expansion: r(s) = r0 + s*t0 + s^2*k/2
+    2. write down taylor expansion: r(s_0+delta_s) = r0 + delta_s*t0 + delta_s^2*k/2
     3. calculate velocity and get dr
     4. sample next position according to r(s) and dr
     5. generate new frame
     
-    positon: r, in 
-    frame: (t,n1,n2)
-    curvature: k1,k2, parameterizing curvature vector k = k1*n1+k2*n2
+    positon: r, (3,)
+    frame: (t,n1,n2) all (3,) array
+    k: k1,k2, (2,) parameterizing curvature vector k = k1*n1+k2*n2
     '''
+    rmf_t, rmf_n1, rmf_n2 = frame
+    r = position
+    k1, k2 = k
+    kappa = np.sqrt(k1**2+k2**2)
+
+    # suppose predicted curvature vector k = N x kappa, use k and rmf_t to estimate Frenet frame (eT,eN,eB)
+    phi = np.arccos(np.clip(k1 / kappa, a_min=-1, a_max=1))
+    cosphi = np.cos(phi)
+    sinphi = np.sin(phi)
+    eN = cosphi * rmf_n1 - sinphi * rmf_n2 
+    eN /= np.sqrt(np.sum(eN ** 2, axis=-1))
+    eT = rmf_t
+    eB = np.cross(eT, eN, axis=-1)
+    k_vector = k1 * rmf_n1 + k2 * rmf_n2
+
+    # calculate velocity according to curvature (adaptive step size mentioned in roboEm paper)
+    step_factor = 1
+    base_step = 3
+    radius = 32
+    vmin = 1
+    v = step_factor * base_step / (1.0 + radius * kappa)
+    v = np.maximum(vmin * base_step, v)
+
+    # calculate delta_s, then the next frame
+    norm = 1 / np.sqrt(1 + v**2 * kappa**2) # norm of the forward step
+    delta_s = v * eT + v**2 / 2.0 * k_vector
+    next_r = r + delta_s
+    next_t = norm * (eT + v * k_vector)
+    next_n1 = cosphi * norm * (eN - v * kappa * eT) + sinphi * eB
+    next_n2 = np.cross(next_t,next_n1)
+
+    return next_r, next_t, next_n1, next_n2
 
 
-if __name__ == '__main__':
-    import json
-    import napari
-    from ntools.read_zarr import Image
-    json_path = '/Users/bean/workspace/data/roi_dense1.json'
-    img_path = '/Users/bean/workspace/data/roi_dense1.zarr'
-    image = Image(img_path)
-    with open(json_path) as f:
-        neurites = json.load(f)
 
-    trajs = [] # list of segments, each segment is a list of coordinates
-    for neurite in neurites:
-        for seg in neurite: 
-            traj = []
-            for node in seg:
-                traj.append(node['pos'])
-            trajs.append(traj)
-
-
+def visalize_frames(trajs,image):
     points = []
     curvatures = [] 
     rmf_n1s = []
     rmf_n2s = []
     rmf_ts = []
     norms = []
-    for traj in trajs[10:20]:
+    for traj in trajs:
         if len(traj)<=4:
             continue
         wp = np.array(traj) # way points
@@ -268,3 +284,78 @@ if __name__ == '__main__':
     viewer.add_vectors(curvature, edge_width=0.1, length=10, vector_style='arrow', edge_color='green', name='curvature')
     napari.run()
 
+
+
+
+if __name__ == '__main__':
+    import json
+    import napari
+    from ntools.read_zarr import Image
+    json_path = '/Users/bean/workspace/data/roi_dense1.json'
+    img_path = '/Users/bean/workspace/data/roi_dense1.zarr'
+    image = Image(img_path)
+
+    with open(json_path) as f:
+        neurites = json.load(f)
+
+    trajs = [] # list of segments, each segment is a list of coordinates
+    for neurite in neurites:
+        for seg in neurite:
+            traj = []
+            for node in seg:
+                traj.append(node['pos'])
+            trajs.append(traj)
+    
+    # visalize_frames(trajs[10:20],image)
+    '''
+    get r,t,n1,n2,k
+    '''
+    traj = trajs[18]
+    wp = np.array(traj)
+    tarj_length = len(wp)
+    r, rmf_t, rmf_n1, rmf_n2, frenet_N, curvature = RMF(wp,sample_num=tarj_length*5)
+    k = np.multiply(frenet_N,curvature)
+
+    k1 = rmf_n1*(einsum(k,rmf_n1,'i j, i j -> i')/reduce(rmf_n1**2, 'i j->i', 'sum')**0.5)[:,np.newaxis]
+    k2 = rmf_n2*(einsum(k,rmf_n2,'i j, i j -> i')/reduce(rmf_n2**2, 'i j->i', 'sum')**0.5)[:,np.newaxis]
+
+    k1 = einsum(k1**2, 'i j -> i')**0.5
+    k2 = einsum(k2**2, 'i j -> i')**0.5
+    pred_k = np.stack((k1, k2), axis=1) 
+
+    fi = 30 #frame index
+    nr, nt, nn1, nn2 = predict_next_frame(r[fi],(rmf_t[fi],rmf_n1[fi],rmf_n2[fi]),pred_k[fi])
+
+    r = r[0:fi][::5]
+    t = rmf_t[0:fi][::5]
+    n1 = rmf_n1[0:fi][::5]
+    n2 = rmf_n2[0:fi][::5]
+
+    r = np.vstack([r,nr])
+    t = np.vstack([t,nt])
+    n1 = np.vstack([n1,nn1])
+    n2 = np.vstack([n2,nn2])
+
+
+    rmf_tv = np.stack([r,t], axis=1)
+    rmf_n1v = np.stack([r,n1], axis=1)
+    rmf_n2v = np.stack([r,n2], axis=1)
+
+    offset = []
+    size = []
+    for i in range(3):
+        offset.append(int(np.min(r[:,i])))
+        size.append(int(np.max(r[:,i]-np.min(r[:,i]))))
+
+    offset = [i-20 for i in offset]
+    size = [i+40 for i in size]
+    roi = offset + size
+    print(roi)
+    img = image.from_roi(roi)
+
+    viewer = napari.Viewer(ndisplay=3)
+    viewer.add_image(img,translate=offset)
+    viewer.add_vectors(rmf_tv, edge_width=0.1, length=2, vector_style='arrow', edge_color='blue', name='Tangent')
+    viewer.add_vectors(rmf_n1v, edge_width=0.1, length=2, vector_style='arrow', edge_color='red', name='N1')
+    viewer.add_vectors(rmf_n2v, edge_width=0.1, length=2, vector_style='arrow', edge_color='orange', name='N2')
+    napari.run()
