@@ -3,7 +3,7 @@ import napari
 import json
 import os
 from magicgui import magicgui, widgets
-from ntools.read_ims import Image
+from ntools.image_reader import wrap_image
 from tifffile import imwrite
 
 
@@ -51,7 +51,7 @@ class SimpleViewer:
 
     def refresh(self):
         if self.image is None:
-            self.image = Image(self.image_path.value)
+            self.image = wrap_image(self.image_path.value)
         roi = [int(float(self.x.value)-int(self.size.value)//2) ,int(float(self.y.value)-int(self.size.value)//2), int(float(self.z.value)-int(self.size.value)//2),int(self.size.value), int(self.size.value), int(self.size.value)]
         print(roi)
         self.image_layer.data = self.image.from_roi(roi, int(self.level.value))
@@ -186,9 +186,9 @@ class SimpleViewer:
             print(image_name+' saved')
 
 
-def main_function():
+def main():
     viewer = SimpleViewer()
 
 
 if __name__ == '__main__':
-    main_function()
+    main()

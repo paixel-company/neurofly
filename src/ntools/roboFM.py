@@ -290,10 +290,10 @@ def visalize_frames(trajs,image):
 if __name__ == '__main__':
     import json
     import napari
-    from ntools.read_zarr import Image
+    from ntools.image_reader import wrap_image
     json_path = '/Users/bean/workspace/data/roi_dense1.json'
     img_path = '/Users/bean/workspace/data/roi_dense1.zarr'
-    image = Image(img_path)
+    image = wrap_image(img_path)
 
     with open(json_path) as f:
         neurites = json.load(f)

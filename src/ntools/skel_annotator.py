@@ -239,9 +239,10 @@ class Annotator:
         print(mask_path+' saved')
 
 
-def main_function():
+def main():
     anno = Annotator()
 
 
+
 if __name__ == '__main__':
-    main_function()
+    main()

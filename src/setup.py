@@ -6,9 +6,10 @@ setup(
     packages=['ntools'],
     entry_points={
         'console_scripts': [
-            'segs_annotator = ntools.segs_annotator:main_function',
-            'simple_viewer = ntools.simple_viewer:main_function',
-            'skel_annotator = ntools.skel_annotator:main_function'
+            'segs_annotator = ntools.segs_annotator:main',
+            'simple_viewer = ntools.simple_viewer:main',
+            'skel_annotator = ntools.skel_annotator:main',
+            'seg = ntools.seger:command_line_interface'
         ]
     },
     requires = ["setuptools"],

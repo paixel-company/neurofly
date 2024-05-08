@@ -1,8 +1,6 @@
 from ntools.dbio import read_edges, read_nodes, delete_nodes, add_nodes, add_edges, check_node, uncheck_nodes, augment_nodes, change_type
 from magicgui import magicgui, widgets
-from ntools.read_ims import Image as Image_ims
-from ntools.read_zarr import Image as Image_zarr
-from ntools.graph_cut import edges_to_be_cut
+from ntools.image_reader import wrap_image
 from scipy.spatial import KDTree
 from napari.utils.notifications import show_info
 import numpy as np
@@ -296,7 +294,7 @@ class Annotator:
             for node in nodes:
                 coords.append(node['coord'])
                 nids.append(node['nid'])
-                if node['checked']==-1:
+                if node['checked']==-1 and self.proofreading_switch.value==True:
                     colors.append(0)
                 else:
                     colors.append(color)
@@ -492,12 +490,7 @@ class Annotator:
             self.kdtree = KDTree(np.array(coords))
             self.coord_ids = coord_ids
             # read image
-            if 'ims' in str(self.image_path.value):
-                self.image = Image_ims(self.image_path.value)
-            elif 'zarr' in str(self.image_path.value):
-                self.image = Image_zarr(self.image_path.value)
-            else:
-               raise Exception("image type not supported yet") 
+            self.image = wrap_image(str(self.image_path.value))
         
         # load low reslotion image if exists ('ims' file format)
         if 'ims' in str(self.image_path.value) and (self.panorama_image.scale == np.array([1,1,1])).all() and self.image_switch.value == True:
@@ -510,7 +503,7 @@ class Annotator:
             # update panorama image layer
             roi = self.image.rois[i]
             spacing = self.image.info[i]['spacing']
-            image = self.image.from_roi(roi,level=i)
+            image = self.image.from_roi(roi,level=level)
             self.panorama_image.data = image
             self.panorama_image.scale = spacing
             self.panorama_image.visible = True
@@ -557,6 +550,8 @@ class Annotator:
             'colors': colors,
             'nids': np.array(nids)
         }
+        
+        camera_center  = [i + j//2 for i,j in zip(self.image.roi[0:3],self.image.roi[3:])]
 
 
         self.panorama_points.visible = True
@@ -579,10 +574,12 @@ class Annotator:
         self.ex_edge_layer.visible = False
 
         self.viewer.reset_view()
+        self.viewer.camera.center = camera_center
         self.viewer.layers.selection.active = self.panorama_points
 
 
     def node_selection(self, layer, event):
+        # this is appended to panorama_points layer
         if event.button == 2:
             # remove all connected points
             index = layer.get_value(
@@ -608,71 +605,64 @@ class Annotator:
 
 
     def node_operations(self, layer, event):
-        if self.proofreading_switch.value == True:
-            # in proofreading mode, only one operation is allowed
-            # label some nodes as unchecked (checked = -1)
-            if event.button == 1:
-                # move camera to clicked node
-                index = layer.get_value(
-                    event.position,
-                    view_direction=event.view_direction,
-                    dims_displayed=event.dims_displayed,
-                    world=True,
-                )
-                if index is not None:
-                    node_id = self.point_layer.properties['nids'][index]
-                    self.selected_node.value = str(node_id)
-                    self.refresh(self.viewer)
-            if event.button == 2:
-                # label one node as unchecked
-                index = layer.get_value(
-                    event.position,
-                    view_direction=event.view_direction,
-                    dims_displayed=event.dims_displayed,
-                    world=True,
-                )
-                if index is not None:
-                    node_id = self.point_layer.properties['nids'][index]
-                    if self.G.nodes[node_id]['checked'] == -1:
-                        self.G.nodes[node_id]['checked'] = 0
-                    else:
-                        self.G.nodes[node_id]['checked'] = -1
-                    self.refresh(self.viewer)
+        '''
+        this is appended to point_layer layer
+        node operations:
+            In proofreading:
+                mouse 1: switch center node
+                mouse 2: label node as unchecked
+            In labeling mode:
+                mouse 1: add/remove edge
+                mouse 2: remove node and its edges
+                shift + mouse1: switch center node
+        
+        One operation contains (click type, mode, modifier)
+        '''
+        index = layer.get_value(
+            event.position,
+            view_direction=event.view_direction,
+            dims_displayed=event.dims_displayed,
+            world=True,
+        )
+        if index is None:
             return
+        else:
+            node_id = self.point_layer.properties['nids'][index]
+            # some ugly code
+            if 'Shift' in event.modifiers:
+                modifier = 'Shift'
+            else:
+                modifier = None
 
+            mode = 'proofreading' if self.proofreading_switch.value == True else 'labeling'
+        
+        operation = (event.button, mode, modifier)
+        
+        match operation:
+            case (1, 'proofreading', None): # switch center node
+                self.selected_node.value = str(node_id)
+                self.refresh(self.viewer)
 
-        if event.button == 1:
-            # add or remove connection to center node
-            index = layer.get_value(
-                event.position,
-                view_direction=event.view_direction,
-                dims_displayed=event.dims_displayed,
-                world=True,
-            )
-            if index is not None:
-                node_id = self.point_layer.properties['nids'][index]
+            case (2, 'proofreading', None): # label node as unchecked
+                if self.G.nodes[node_id]['checked'] == -1:
+                    self.G.nodes[node_id]['checked'] = 0
+                else:
+                    self.G.nodes[node_id]['checked'] = -1
+                    self.refresh(self.viewer)
+
+            case (1, 'labeling', None): # add/remove edge
                 if node_id not in self.connected_nodes:
                     self.connected_nodes.append(node_id)
                 elif node_id in self.connected_nodes:
                     self.connected_nodes.remove(node_id)
-
                 # refresh edge layer
                 self.refresh_edge_layer()
 
-
-        if event.button == 2:
-            # remove node and edges
-            index = layer.get_value(
-                event.position,
-                view_direction=event.view_direction,
-                dims_displayed=event.dims_displayed,
-                world=True,
-            )
-            if index is not None:
+            case (2, 'labeling', None): # remove node and its edges
                 current_cc = nx.node_connected_component(self.G, int(self.selected_node.value))
-                # remove node if it's not in current connected component
-                node_id = self.point_layer.properties['nids'][index]
-
+                if len(current_cc)==1:
+                    show_info("Can't remove the last node, switch center node before doing so.")
+                    return
                 if node_id not in current_cc:
                     # preserve the delected node, until next submit
                     if node_id in self.added_nodes:
@@ -692,8 +682,7 @@ class Annotator:
                     self.refresh_edge_layer()
                     self.refresh(self.viewer)
 
-
-                if node_id in current_cc:
+                else:
                     # cut current_cc, select the largest subgraph
                     self.delected_nodes['nodes'].append(self.G.nodes[node_id])
                     # center node is not removed, keep it unchecked
@@ -715,6 +704,17 @@ class Annotator:
 
                     self.refresh_edge_layer()
                     self.refresh(self.viewer)
+
+            case (1, 'labeling', 'Shift'): # switch center node
+                self.connected_nodes = []
+                self.selected_node.value = str(node_id)
+                if self.G.nodes[node_id]['checked'] >= 0:
+                    self.G.nodes[node_id]['checked'] = -1
+                self.refresh_edge_layer()
+                self.refresh(self.viewer)
+
+            case _ :
+                show_info("operation not supported")
 
 
     def put_point(self,layer,event):
@@ -778,9 +778,9 @@ class Annotator:
         '''
 
 
-def main_function():
+def main():
     anno = Annotator()
 
 
 if __name__ == '__main__':
-    main_function()
+    main()

@@ -1,3 +1,4 @@
+import os
 import torch
 import time
 import functools
@@ -15,6 +16,9 @@ from skimage.measure import label, regionprops
 from tqdm import tqdm
 from ntools.patch import patchify_without_splices, get_patch_rois
 from ntools.dbio import segs2db
+from ntools.image_reader import wrap_image
+from ntools.vis import show_segs_as_instances
+
 
 # normaliz layer
 def get_norm_layer(norm_type='instance', dim=2):
@@ -337,12 +341,7 @@ class Seger():
         '''
         cut whole brain image to [300,300,300] cubes without splices (z coordinates % 300 == 0)
         '''
-        if '.ims' in image_path:
-            from ntools.read_ims import Image
-        elif '.zarr' in image_path:
-            from ntools.read_zarr import Image
-
-        image = Image(image_path)
+        image = wrap_image(image_path)
         if roi==None:
             image_roi = image.roi
         else:
@@ -399,6 +398,49 @@ class Seger():
         return segs
 
 
+def command_line_interface():
+    package_dir = os.path.dirname(os.path.abspath(__file__))
+    parser = argparse.ArgumentParser(description="args for seger")
+    parser.add_argument('-weight_path', type=str, default=None, help="path to weight of the segmentation model")
+    parser.add_argument('-image_path', type=str, help="path to the input image, only zarr, ims, tif are currently supported")
+    parser.add_argument('-db_path', type=str, default=None, help="path to the output database file")
+    parser.add_argument('-roi', type=int, nargs='+', default=None, help="image roi, if kept None, process the whole image")
+    parser.add_argument('-vis', action='store_true', default=False, help="whether to visualize result after segmentation")
+    args = parser.parse_args()
+    if args.weight_path is None:
+        args.weight_path = os.path.join(package_dir,'universal_tiny.pth')
+
+    print(f"Using weight: {args.weight_path}")
+    print(f"Processing image: {args.image_path}, roi: {args.roi}")
+
+    seger = Seger(args.weight_path ,bg_thres=150)
+    segs = seger.process_whole(args.image_path, roi=args.roi)
+
+    if args.db_path is not None:
+        print(f"Saving {len(segs)} segs to {args.db_path}")
+        segs2db(segs,args.db_path)
+
+
+    if args.vis:
+        import napari
+        viewer = napari.Viewer(ndisplay=3)
+        image = wrap_image(args.image_path)
+        if args.roi is None:
+            args.roi = image.roi
+        if (np.array(args.roi[3:])<np.array([1000,1000,1000])).all():
+            img = image.from_roi(args.roi)
+            image_layer = viewer.add_image(img)
+            image_layer.translate = args.roi[0:3]
+        else:
+            print(f"image size {args.roi[3:]} is too large to render")
+        seg_points = []
+        for seg in segs:
+            seg_points.append(seg['sampled_points'])
+        show_segs_as_instances(seg_points, viewer, size=2)
+        napari.run()
+
+
+
 if __name__ == '__main__':
     from ntools.vis import show_segs_as_instances
 
@@ -409,10 +451,9 @@ if __name__ == '__main__':
     # seger = Seger('src/weights/lzh_tiny.pth',bg_thres=150)
 
     from ntools.neuron import save_segs
-    from ntools.read_ims import Image
 
-    # '''
-    image_path = '/home/bean/workspace/data/z002.ims'
+    '''
+    # image_path = '/home/bean/workspace/data/z002.ims'
     # roi = [5280,4000,8480,500,500,500] # cell body
     # roi = [3500,6200,7400,500,500,500] # cells 200
     # roi = [3800,5300,11000,500,500,500] # cells 300
@@ -420,8 +461,8 @@ if __name__ == '__main__':
     # roi = [6200,6300,9200,500,500,500] # vessel
     # roi = [6500,7300,10500,500,500,500] # vessel
     # roi = [2800,3100,10400,500,500,500] # cortex
-    # roi = [3800,3200,7100,500,500,500] # sparse axon
-    roi = [3200,4000,7700,500,500,500] # cortex
+    # roi = [3800,3200,7200,500,500,300] # sparse axon
+    # roi = [3200,4000,7700,500,500,500] # cortex
     # roi = [7000,5200,7600,500,500,500] # weak signal
     # roi = [2300,3600,10000,500,500,500] # weak cortex
     # roi = [3050,4300,8400,128,128,128]
@@ -429,7 +470,7 @@ if __name__ == '__main__':
     # roi = [4400,5900,7200,500,500,500] # close axons
     # roi = [3700,4300,7800,300,300,300] # axons
     # roi = [5900,2000,6000,500,500,500] # weak cortex signal
-    # '''
+    '''
 
 
     '''
@@ -455,8 +496,10 @@ if __name__ == '__main__':
     roi = [7000,5600,10000,300,300,300]
     '''
 
+    image_path = '/home/bean/workspace/data/seg_datasets/c002_labeled/skels/img_1.tif'
+    image = wrap_image(image_path)
+    roi = image.roi
     segs = seger.process_whole(image_path, roi=roi)
-    image = Image(image_path)
     img = image.from_roi(roi)
 
     import napari

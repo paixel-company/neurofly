@@ -89,8 +89,8 @@ def gen_dataset(source_dir, out_dir, N=512):
     print('finished')
 
 
+
 if __name__ == '__main__':
     source_dir = '/home/bean/workspace/data/mouse_lzh_labeled/'
     out_dir = '/home/bean/workspace/data/mouse_lzh_aug/'
     gen_dataset(source_dir,out_dir,N=2048)
-

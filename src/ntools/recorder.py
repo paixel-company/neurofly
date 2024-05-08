@@ -24,7 +24,6 @@ class Recorder:
         self.viewer.bind_key('r', self.add_frame)
         self.viewer.bind_key('t', self.play_back)
         self.viewer.bind_key('v', self.save_video)
-        self.viewer.bind_key('g', self.make_gif)
         self.viewer.bind_key('u', self.del_frame)
 
 
@@ -103,24 +102,6 @@ class Recorder:
         for im in frames:
             writer.append_data(im)
         writer.close()
-
-
-
-    def make_gif(self,viewer):
-        name = 'movie.gif'
-        ct = self.camera_trajectory.copy()
-        interp_angles,interp_zooms,interp_centers = self.interp_camera_tra(ct,t_slice=0.02)
-        args_temp = self.camera_trajectory[0]
-        frames = []
-        for (angel,zoom,center) in zip(interp_angles,interp_zooms,interp_centers):
-            args = args_temp.copy()
-            args['angles'] = angel.tolist()
-            args['zoom'] = zoom
-            args['center'] = tuple(center)
-            self.viewer.camera.update(values=args)
-            frame = Image.fromarray(viewer.screenshot(size=(720,720)))
-            frames.append(frame)
-        imageio.mimsave(name, frames, duration = 0.02)
 
 
 
