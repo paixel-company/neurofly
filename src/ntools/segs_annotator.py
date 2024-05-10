@@ -352,7 +352,7 @@ class Annotator:
         
         self.image_layer.data = image
         self.image_layer.reset_contrast_limits()
-        self.image_layer.contrast_limits = [mean_value//2,mean_value+std_value]
+        self.image_layer.contrast_limits = [min(mean_value//2,200),mean_value+std_value]
         self.image_layer.translate = translate
         self.viewer.camera.center = c_coord
         self.viewer.layers.selection.active = self.point_layer
@@ -508,7 +508,13 @@ class Annotator:
             self.panorama_image.scale = spacing
             self.panorama_image.visible = True
             self.panorama_image.reset_contrast_limits()
-
+        
+        # load full image if it's tiff format
+        if '.tif' in str(self.image_path.value) and self.image_switch.value == True: 
+            image = self.image.from_roi(self.image.roi) 
+            self.panorama_image.data = image
+            self.panorama_image.visible = True
+            self.panorama_image.reset_contrast_limits()
 
         connected_components = list(nx.connected_components(self.G))
 

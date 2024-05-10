@@ -326,10 +326,11 @@ if __name__ == '__main__':
     fi = 30 #frame index
     nr, nt, nn1, nn2 = predict_next_frame(r[fi],(rmf_t[fi],rmf_n1[fi],rmf_n2[fi]),pred_k[fi])
 
-    r = r[0:fi][::5]
-    t = rmf_t[0:fi][::5]
-    n1 = rmf_n1[0:fi][::5]
-    n2 = rmf_n2[0:fi][::5]
+
+    r = r[0:fi][::2]
+    t = rmf_t[0:fi][::2]
+    n1 = rmf_n1[0:fi][::2]
+    n2 = rmf_n2[0:fi][::2]
 
     r = np.vstack([r,nr])
     t = np.vstack([t,nt])
