@@ -146,7 +146,7 @@ class Seger():
         model.to(self.device)
         model.eval()
         self.model = model
-        self.bw = 14 #border width
+        self.bw = 14 #border width (128-100)//2
         self.bg_thres = bg_thres
 
 

@@ -91,6 +91,6 @@ def gen_dataset(source_dir, out_dir, N=512):
 
 
 if __name__ == '__main__':
-    source_dir = '/home/bean/workspace/data/mouse_lzh_labeled/'
-    out_dir = '/home/bean/workspace/data/mouse_lzh_aug/'
+    source_dir = '/home/bean/workspace/data/seg_datasets/rm009_sr_labeled/'
+    out_dir = '/home/bean/workspace/data/seg_datasets/rm009_sr_aug/'
     gen_dataset(source_dir,out_dir,N=2048)

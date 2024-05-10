@@ -33,26 +33,42 @@ class SimpleViewer:
         self.image_path = widgets.FileEdit(label="image_path")
         self.save_dir = widgets.FileEdit(label="save dir",mode='d')
         # self.size = widgets.LineEdit(label="block size", value=128)
-        self.size = widgets.Slider(label="block size", value=128, min=128, max=1024)
-        self.size.changed.connect(self.clip_value)
-        self.x = widgets.LineEdit(label="x coordinate", value=5280)
-        self.y = widgets.LineEdit(label="y coordinate",value=4000)
-        self.z = widgets.LineEdit(label="z coordinate",value=8480)
-        self.patchify = widgets.CheckBox(value=False,text='patchify to 128')
+        self.x_size = widgets.Slider(label="x size", value=128, min=0, max=2048)
+        self.y_size = widgets.Slider(label="y size", value=128, min=0, max=2048)
+        self.z_size = widgets.Slider(label="z size", value=128, min=0, max=2048)
+        self.x_size.changed.connect(self.clip_x)
+        self.y_size.changed.connect(self.clip_y)
+        self.z_size.changed.connect(self.clip_z)
+        self.x = widgets.LineEdit(label="x offset", value=5280)
+        self.y = widgets.LineEdit(label="y offset", value=4000)
+        self.z = widgets.LineEdit(label="z offset", value=8480)
+        self.clip = widgets.CheckBox(value=False, text='clip slide bars')
+        self.patchify = widgets.CheckBox(value=False, text='patchify to 128')
         self.level = widgets.LineEdit(label="level",value=0)
         self.level_info = widgets.TextEdit(label='level info')
-        self.container = widgets.Container(widgets=[self.image_path, self.save_dir,self.size,self.x, self.y, self.z, self.level, self.level_info, self.patchify, self.button3, self.button1, self.button2,self.button4, self.button0])
+        self.container = widgets.Container(widgets=[self.image_path, self.save_dir,self.clip,self.x_size,self.y_size,self.z_size,self.x, self.y, self.z, self.level, self.level_info, self.patchify, self.button3, self.button1, self.button2,self.button4, self.button0])
         self.viewer.window.add_dock_widget(self.container, area='right')
 
 
-    def clip_value(self):
-        self.size.value = (self.size.value//128)*128
+    def clip_x(self):
+        if self.clip.value == True:
+            self.x_size.value = (self.x_size.value//10)*10
+
+    def clip_y(self):
+        if self.clip.value == True:
+            self.y_size.value = (self.y_size.value//10)*10
+
+    def clip_z(self):
+        if self.clip.value == True:
+            self.z_size.value = (self.z_size.value//10)*10
 
 
     def refresh(self):
         if self.image is None:
-            self.image = wrap_image(self.image_path.value)
-        roi = [int(float(self.x.value)-int(self.size.value)//2) ,int(float(self.y.value)-int(self.size.value)//2), int(float(self.z.value)-int(self.size.value)//2),int(self.size.value), int(self.size.value), int(self.size.value)]
+            self.image = wrap_image(str(self.image_path.value))
+
+        roi = [int(float(self.x.value)) ,int(float(self.y.value)), int(float(self.z.value)),int(self.x_size.value), int(self.y_size.value), int(self.z_size.value)]
+
         print(roi)
         self.image_layer.data = self.image.from_roi(roi, int(self.level.value))
         self.image_layer.translate = roi[:3]
@@ -67,7 +83,7 @@ class SimpleViewer:
 
     def toggle_full_view(self):
         image_size = self.image.info[int(self.level.value)]['image_size']
-        if max(image_size)>1024:
+        if min(image_size)>1024:
             return
         roi = [0,0,0]+image_size 
         image = self.image.from_roi(roi, int(self.level.value))
@@ -81,9 +97,9 @@ class SimpleViewer:
 
 
     def level_down(self):
-        cx = int(float(self.x.value))
-        cy = int(float(self.y.value))
-        cz = int(float(self.z.value))
+        cx = int(float(self.x.value)) + self.x_size.value//2
+        cy = int(float(self.y.value)) + self.y_size.value//2
+        cz = int(float(self.z.value)) + self.z_size.value//2
         cl = int(self.level.value)
         if cl==0:
             return
@@ -95,17 +111,17 @@ class SimpleViewer:
         tx = int(cx*scale[0]) 
         ty = int(cy*scale[1]) 
         tz = int(cz*scale[2]) 
-        self.x.value = tx
-        self.y.value = ty
-        self.z.value = tz
+        self.x.value = tx - self.x_size.value//2
+        self.y.value = ty - self.y_size.value//2
+        self.z.value = tz - self.z_size.value//2
         self.goal_layer.data = [tx,ty,tz]
         self.refresh()
 
 
     def level_up(self):
-        cx = int(float(self.x.value))
-        cy = int(float(self.y.value))
-        cz = int(float(self.z.value))
+        cx = int(float(self.x.value)) + self.x_size.value//2
+        cy = int(float(self.y.value)) + self.y_size.value//2
+        cz = int(float(self.z.value)) + self.z_size.value//2
         cl = int(self.level.value)
         if cl==7:
             return
@@ -117,11 +133,12 @@ class SimpleViewer:
         tx = int(cx*scale[0]) 
         ty = int(cy*scale[1]) 
         tz = int(cz*scale[2]) 
-        self.x.value = tx
-        self.y.value = ty
-        self.z.value = tz
+        self.x.value = tx - self.x_size.value//2
+        self.y.value = ty - self.y_size.value//2
+        self.z.value = tz - self.z_size.value//2
         self.goal_layer.data = [tx,ty,tz]
         self.refresh()
+
 
 
     def on_double_click(self,layer,event):
@@ -154,9 +171,9 @@ class SimpleViewer:
         print('Put point at: ', max_point)
         if(event.button==1):
             self.goal_layer.data = max_point
-            self.x.value = max_point[0]
-            self.y.value = max_point[1]
-            self.z.value = max_point[2]
+            self.x.value = max_point[0] - self.x_size.value//2
+            self.y.value = max_point[1] - self.y_size.value//2
+            self.z.value = max_point[2] - self.z_size.value//2
             self.refresh()
 
 
