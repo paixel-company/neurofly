@@ -2,6 +2,7 @@ import os
 import napari
 import random
 import numpy as np
+import argparse
 from tifffile import imread, imwrite
 from skimage.exposure import match_histograms
 from tqdm import tqdm
@@ -45,7 +46,6 @@ def gen_dataset(source_dir, out_dir, N=512):
     combinations = list(generate_random_combinations(numbers, N))
 
     for i,[p1,p2,p3] in tqdm(enumerate(combinations)):
-
         img_path1 = image_paths[p1]
         img_path2 = image_paths[p2]
         mask_path1 = mask_paths[p1]
@@ -55,8 +55,15 @@ def gen_dataset(source_dir, out_dir, N=512):
         img2 = imread(img_path2)
         mask1 = imread(mask_path1)
         mask2 = imread(mask_path2)
+        
+        # in case of empty dimension
+        img1 = img1.squeeze()
+        img2 = img2.squeeze()
+        mask1 = mask1.squeeze()
+        mask2 = mask2.squeeze()
 
         reference = imread(image_paths[p3])
+        reference = reference.squeeze()
 
         mask = img1 > img2
         overlapped = np.where(mask, img1, img2)
@@ -87,6 +94,20 @@ def gen_dataset(source_dir, out_dir, N=512):
             num+=1
     
     print('finished')
+
+
+
+def command_line_interface():
+    parser = argparse.ArgumentParser(description="args for seger")
+    parser.add_argument('-source', type=str, default=None, help="dir of labeled images")
+    parser.add_argument('-out', type=str, help="dir of output augmented images")
+    parser.add_argument('-n', type=int, help="number of images")
+    args = parser.parse_args()
+
+    print(f"input dir: {args.source}")
+    print(f"out dir: {args.out}")
+    print(f"number of images: {args.n}")
+    gen_dataset(args.labeled,args.out,N=args.n)
 
 
 

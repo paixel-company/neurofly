@@ -32,7 +32,7 @@ class Ims():
         return np.transpose(self.images[level][z_slice,y_slice,x_slice],(2,1,0))
 
 
-    def from_roi(self, coords, level=0):
+    def from_roi(self, coords, level=0, padding='constant'):
         # coords: [x_offset,y_offset,z_offset,x_size,y_size,z_size]
         x_min, x_max = coords[0], coords[3]+coords[0]
         y_min, y_max = coords[1], coords[4]+coords[1]
@@ -52,7 +52,7 @@ class Ims():
         z_slice = slice(z_min-self.rois[level][2]+zlp,z_max-self.rois[level][2]-zhp) 
         img = np.transpose(self.images[level][z_slice,y_slice,x_slice],(2,1,0))
 
-        padded = np.pad(img, ((xlp, xhp), (ylp, yhp), (zlp, zhp)), 'constant')
+        padded = np.pad(img, ((xlp, xhp), (ylp, yhp), (zlp, zhp)), padding)
 
         return padded
 
@@ -130,7 +130,7 @@ class Zarr():
         z_slice = slice(z_min-self.roi[2],z_max-self.roi[2])
         return self.image[x_slice,y_slice,z_slice]
 
-    def from_roi(self, coords):
+    def from_roi(self, coords, padding='constant'):
         # coords: [x_offset,y_offset,z_offset,x_size,y_size,z_size]
         x_min, x_max = coords[0], coords[3]+coords[0]
         y_min, y_max = coords[1], coords[4]+coords[1]
@@ -151,7 +151,7 @@ class Zarr():
         z_slice = slice(z_min-self.roi[2]+zlp,z_max-self.roi[2]-zhp) 
         img = self.image[x_slice,y_slice,z_slice]
 
-        padded = np.pad(img, ((xlp, xhp), (ylp, yhp), (zlp, zhp)), 'constant')
+        padded = np.pad(img, ((xlp, xhp), (ylp, yhp), (zlp, zhp)), padding)
 
         return padded
 
@@ -175,7 +175,7 @@ class Tiff():
     To load image directly from global coordinates, wrap .zarr object in this class.
     '''
     def __init__(self,tiff_path):
-        self.image = imread(tiff_path)
+        self.image = np.squeeze(imread(tiff_path))
         self.roi = [0,0,0] + list(self.image.shape)
         print(f'Image ROI: {self.roi[0:3]} to {[i+j for i,j in zip(self.roi[0:3],self.roi[3:6])]}')
         self.shape = self.roi[3:6]
@@ -189,7 +189,7 @@ class Tiff():
         z_slice = slice(z_min-self.roi[2],z_max-self.roi[2])
         return self.image[x_slice,y_slice,z_slice]
 
-    def from_roi(self, coords):
+    def from_roi(self, coords, padding='constant'):
         # coords: [x_offset,y_offset,z_offset,x_size,y_size,z_size]
         x_min, x_max = coords[0], coords[3]+coords[0]
         y_min, y_max = coords[1], coords[4]+coords[1]
@@ -210,7 +210,7 @@ class Tiff():
         z_slice = slice(z_min-self.roi[2]+zlp,z_max-self.roi[2]-zhp) 
         img = self.image[x_slice,y_slice,z_slice]
 
-        padded = np.pad(img, ((xlp, xhp), (ylp, yhp), (zlp, zhp)), 'constant')
+        padded = np.pad(img, ((xlp, xhp), (ylp, yhp), (zlp, zhp)), padding) # padding can be constant or reflect
 
         return padded
 

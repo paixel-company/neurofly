@@ -87,104 +87,6 @@ def RMF(
     return P, RMF_T, RMF_N, RMF_B, N ,k
 
 
-def gram_schmidt_orth(eT, eN1):
-    """
-    As errors can accumulate, this Code makes sure, that eT, eN1 and eN2 are still an ONS
-    For this eT is assumed to be correct (up to normalization), eN1 is calculated by Gram-Schmidt
-    and eN2 by vector cross product
-    => There might be new errors due to the initial assumption of eT being correct
-      (RoboEM is assumed to be able to deal with these and post-hoc correct them)
-    """
-    eT /= np.sqrt(np.sum(eT ** 2, axis=-1)).reshape(-1, 1, 1)
-    eN1 /= np.sqrt(np.sum(eN1 ** 2, axis=-1)).reshape(-1, 1, 1)
-    eN1 -= np.sum(eN1 * eT, axis=-1).reshape(-1, 1, 1) * eT
-    eN1 /= np.sqrt(np.sum(eN1 ** 2, axis=-1)).reshape(-1, 1, 1)
-    eN2 = np.cross(eT, eN1, axis=-1)
-    eN2 /= np.sqrt(np.sum(eN2 ** 2, axis=-1)).reshape(-1, 1, 1)
-    return eT, eN1, eN2
-
-
-
-def exact_parabola_integration_step(tripod, k, vmin=0.1, stepsize_factor=1.0, base_step=11.24):
-    """
-    Assuming an exact parabola based on the Bishop curvatures k1, k2, we can write down the Frenet frame and from this
-    also the Bishop frame of this parabola analytically (note that it's not arc length parameterized!):
-    r = r0 + s t0 + s^2/2 k0
-    Frenet frame:
-    => kappa(s) = kappa0 / (1+(s*kappa0)^2)^(3/2), with kappa0 = sqrt(k1^2 + k2^2)
-        | Define norm = 1/sqrt(1+(s*kappa0)^2)
-        t (s) = norm * ( t0  + s * k0 )
-        n(s) = norm * ( k0/kappa0 - s * kappa0 * t0  )
-        b(s) = b0
-    Bishop frame:
-    using n1 =  cos(phi) n + sin(phi) b
-          n2 = -sin(phi) n + cos(phi) b
-          <=>
-          n = cos(phi) n1 - sin(phi) n2
-          with cos(phi) = k1/kappa; sin(phi) = -k2/kappa
-
-          (Note that for a parabola the torsion tau = 0 and therefore dphi/ds = -tau = 0 => phi = const.)
-
-        n1(s) = cos(phi) * norm * ( n - s * kappa0 * t0 )
-               +sin(phi) * b
-
-    :param tripod: [Nx4x3] 4: (r0, eT=t0, eN1=n10, eN2=n20), r is position vector, eT, eN1, eN2 are bishop vectors (all uniformed)
-    :param k: [Nx2] 2:(k1, k2) Bishop curvatures
-    :param vmin: minimum step size (in units of base_step)
-    :param speed_factor: factor on base_step
-    :param base_step: basis step size if k = 0
-    :return: tripod(0 + v)
-    """
-    tripod = tripod.astype('float64')
-    k = k.astype('float64')
-
-    # pre calculations and reshapes
-    r, eT, eN1, eN2 = np.hsplit(tripod, 4)
-    k1, k2 = np.hsplit(k, 2) # bishop curvature vector (projection of k)
-    kappa_sq = k1 ** 2 + k2 ** 2
-    kappa = np.sqrt(kappa_sq) # curvature
-
-    # Compute Frenet from Bishop frame and curvatures
-    # TODO: check if below formulas are
-    #  * correct (check e.g. whether below formulas yield the same up to +O(v^2) as Euler step) AND
-    #  * do not contain analytically reducible computations AND
-    #  * numerically stable - what happens for kappa close or equal to 0?
-
-    phi = np.arccos(np.clip(k1 / kappa, a_min=-1, a_max=1))
-    cosphi = np.cos(phi).reshape(-1, 1, 1)
-    sinphi = np.sin(phi).reshape(-1, 1, 1)
-    eN = cosphi * eN1 - sinphi * eN2
-    eN /= np.sqrt(np.sum(eN ** 2, axis=-1)).reshape(-1, 1, 1)
-    eB = np.cross(eT, eN, axis=-1)
-
-
-    v = stepsize_factor * base_step / (1.0 + 500 * kappa)
-    v = np.maximum(vmin * base_step, v).reshape([-1, 1, 1])
-    v_sq = v**2
-
-    k1 = k1.reshape([-1, 1, 1])
-    k2 = k2.reshape([-1, 1, 1])
-    kappa = kappa.reshape([-1, 1, 1])
-    kappa_sq = kappa_sq.reshape([-1, 1, 1])
-
-    k = k1 * eN1 + k2 * eN2
-    norm = 1 / np.sqrt(1 + v_sq * kappa_sq)
-
-    # "Parabola step" - simultaneous updates
-    dr = v * eT + v_sq / 2.0 * k
-    r, eT, eN1 = (
-            r + dr,
-            norm * (eT + v * k),
-            cosphi * norm * (eN - v * kappa * eT) + sinphi * eB
-    )
-
-    act_step_size = np.sqrt(np.sum(dr**2, axis=-1)).reshape([-1])
-
-    # Apply Gram-Schmidt Orthonormalization
-    eT, eN1, eN2 = gram_schmidt_orth(eT, eN1)
-
-    return np.concatenate((r, eT, eN1, eN2), 1), act_step_size
-
 
 def predict_next_frame(position,frame,k,step_size=5):
     '''
@@ -231,7 +133,6 @@ def predict_next_frame(position,frame,k,step_size=5):
     next_n2 = np.cross(next_t,next_n1)
 
     return next_r, next_t, next_n1, next_n2
-
 
 
 def visalize_frames(trajs,image):
@@ -288,32 +189,52 @@ def visalize_frames(trajs,image):
 
 
 if __name__ == '__main__':
-    import json
     import napari
+    import networkx as nx
     from ntools.image_reader import wrap_image
-    json_path = '/Users/bean/workspace/data/roi_dense1.json'
-    img_path = '/Users/bean/workspace/data/roi_dense1.zarr'
+    from ntools.dbio import read_nodes, read_edges, get_edges_by
+    img_path = '/home/bean/workspace/data/RM009_axons_1.tif'
+    db_path = '/home/bean/workspace/data/RM009_axons_1.db'
     image = wrap_image(img_path)
+    nodes = read_nodes(db_path)
+    edges = read_edges(db_path)
 
-    with open(json_path) as f:
-        neurites = json.load(f)
+    G = nx.Graph()
 
-    trajs = [] # list of segments, each segment is a list of coordinates
-    for neurite in neurites:
-        for seg in neurite:
-            traj = []
-            for node in seg:
-                traj.append(node['pos'])
-            trajs.append(traj)
-    
+    for node in nodes:
+        G.add_node(node['nid'], nid = node['nid'],coord = node['coord'], type = node['type'], checked = node['checked'])
+
+    for edge in edges:
+        G.add_edge(edge['src'],edge['des'],creator = edge['creator'])
+
+    branch_nodes = [node for node, degree in G.degree() if degree >= 3]
+    G.remove_nodes_from(branch_nodes)
+    connected_components = list(nx.connected_components(G))
+    segments = []
+    for cc in connected_components:
+        if len(cc) <= 10:
+            continue
+        sub_g = G.subgraph(list(cc))
+        ends = [node for node, degree in sub_g.degree() if degree == 1]
+        start_node = ends[0]
+        traversal = list(nx.bfs_edges(sub_g, start_node))
+        traversal_path = [start_node] + [v for u, v in traversal]
+        segments.append(traversal_path)
+
+    segments.sort(key=len)
+    segments = segments[::-1]
+    segments = [[G.nodes[i]['coord'] for i in seg] for seg in segments if len(seg)>10]
+
+
     # visalize_frames(trajs[10:20],image)
     '''
-    get r,t,n1,n2,k
+    given segments as list of coordinates
+    calculate r,t,n1,n2,k
     '''
-    traj = trajs[18]
+    traj = segments[0]
     wp = np.array(traj)
     tarj_length = len(wp)
-    r, rmf_t, rmf_n1, rmf_n2, frenet_N, curvature = RMF(wp,sample_num=tarj_length*5)
+    r, rmf_t, rmf_n1, rmf_n2, frenet_N, curvature = RMF(wp,sample_num=tarj_length*3)
     k = np.multiply(frenet_N,curvature)
 
     k1 = rmf_n1*(einsum(k,rmf_n1,'i j, i j -> i')/reduce(rmf_n1**2, 'i j->i', 'sum')**0.5)[:,np.newaxis]
@@ -323,20 +244,19 @@ if __name__ == '__main__':
     k2 = einsum(k2**2, 'i j -> i')**0.5
     pred_k = np.stack((k1, k2), axis=1) 
 
-    fi = 30 #frame index
+    fi = len(r)-1 #frame index
     nr, nt, nn1, nn2 = predict_next_frame(r[fi],(rmf_t[fi],rmf_n1[fi],rmf_n2[fi]),pred_k[fi])
 
 
-    r = r[0:fi][::2]
-    t = rmf_t[0:fi][::2]
-    n1 = rmf_n1[0:fi][::2]
-    n2 = rmf_n2[0:fi][::2]
+    r = r[0:fi]
+    t = rmf_t[0:fi]
+    n1 = rmf_n1[0:fi]
+    n2 = rmf_n2[0:fi]
 
     r = np.vstack([r,nr])
     t = np.vstack([t,nt])
     n1 = np.vstack([n1,nn1])
     n2 = np.vstack([n2,nn2])
-
 
     rmf_tv = np.stack([r,t], axis=1)
     rmf_n1v = np.stack([r,n1], axis=1)
@@ -349,9 +269,8 @@ if __name__ == '__main__':
         size.append(int(np.max(r[:,i]-np.min(r[:,i]))))
 
     offset = [i-20 for i in offset]
-    size = [i+40 for i in size]
+    size = [i+20*2 for i in size]
     roi = offset + size
-    print(roi)
     img = image.from_roi(roi)
 
     viewer = napari.Viewer(ndisplay=3)
@@ -360,3 +279,4 @@ if __name__ == '__main__':
     viewer.add_vectors(rmf_n1v, edge_width=0.1, length=2, vector_style='arrow', edge_color='red', name='N1')
     viewer.add_vectors(rmf_n2v, edge_width=0.1, length=2, vector_style='arrow', edge_color='orange', name='N2')
     napari.run()
+

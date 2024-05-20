@@ -281,12 +281,16 @@ class Seger():
         #     mask[:, :, :border_size[2]] = 0
         #     mask[:, :, -border_size[2]:] = 0
 
+        x_border = 3
+        y_border = 3
         z_border = 3
+        mask[:, :, :x_border] = 0
+        mask[:, :, -x_border:] = 0
+        mask[:, :, :y_border] = 0
+        mask[:, :, -y_border:] = 0
         mask[:, :, :z_border] = 0
         mask[:, :, -z_border:] = 0
 
-        # mask = binary_dilation(mask,footprint=ball(1))
-        # mask = binary_erosion(mask,footprint=ball(3))
 
         skel = skeletonize(mask)
         labels = label(skel, connectivity=3)
@@ -352,44 +356,13 @@ class Seger():
         # pad rois
         segs = []
         for roi in tqdm(rois):
-            tg_size = self.bw # (128-100)//2
-            # add border if possible
-            x1,x2,y1,y2,z1,z2 = roi[0],roi[0]+roi[3],roi[1],roi[1]+roi[4],roi[2],roi[2]+roi[5]
-            x1 = max(offset[0],x1-tg_size)
-            y1 = max(offset[1],y1-tg_size)
-            z1 = max(offset[2],z1-tg_size)
-            x2 = min(bounds[0],x2+tg_size)
-            y2 = min(bounds[1],y2+tg_size)
-            z2 = min(bounds[2],z2+tg_size)
-
-            block = image[x1:x2,y1:y2,z1:z2]
-
-            x1_pad = roi[0]-x1
-            y1_pad = roi[1]-y1
-            z1_pad = roi[2]-z1
-            x2_pad = x2-roi[0]-roi[3]
-            y2_pad = y2-roi[1]-roi[4]
-            z2_pad = z2-roi[2]-roi[5]
-
-            pad_widths = [
-                (tg_size-x1_pad, tg_size-x2_pad),
-                (tg_size-y1_pad, tg_size-y2_pad),
-                (tg_size-z1_pad, tg_size-z2_pad)
-            ]
-
-            # if img.shape%block_size != 0, pad to target size
-
-            ap = [] # additional padding
-            for i, (p1,p2) in enumerate(pad_widths):
-                res = roi[i+3]+tg_size*2 - (block.shape[i]+p1+p2)
-                ap.append(res)
-                if res!=0:
-                    pad_widths[i] = (p1,p2+res)
-            padded_block = np.pad(block, pad_widths, mode='reflect')
+            roi[:3] = [i-self.bw for i in roi[:3]]
+            roi[3:] = [i+self.bw*2 for i in roi[3:]]
+            padded_block = image.from_roi(roi,padding='reflect')
             if dec!=None:
                 padded_block = dec.process_img(padded_block)
             mask = self.get_large_mask(padded_block)
-            _, segs_in_block = self.mask_to_segs(mask,offset=roi[0:3])
+            _, segs_in_block = self.mask_to_segs(mask,offset=[i+self.bw for i in roi[:3]])
             segs+=segs_in_block
         
         for i,seg in enumerate(segs):
@@ -427,7 +400,7 @@ def command_line_interface():
         image = wrap_image(args.image_path)
         if args.roi is None:
             args.roi = image.roi
-        if (np.array(args.roi[3:])<np.array([1000,1000,1000])).all():
+        if (np.array(args.roi[3:])<np.array([1024,1024,1024])).all():
             img = image.from_roi(args.roi)
             image_layer = viewer.add_image(img)
             image_layer.translate = args.roi[0:3]
@@ -450,10 +423,9 @@ if __name__ == '__main__':
     # seger = Seger('src/weights/z002_tiny.pth',bg_thres=150)
     # seger = Seger('src/weights/lzh_tiny.pth',bg_thres=150)
 
-    from ntools.neuron import save_segs
 
-    '''
-    # image_path = '/home/bean/workspace/data/z002.ims'
+    # '''
+    image_path = '/home/bean/workspace/data/z002.ims'
     # roi = [5280,4000,8480,500,500,500] # cell body
     # roi = [3500,6200,7400,500,500,500] # cells 200
     # roi = [3800,5300,11000,500,500,500] # cells 300
@@ -469,8 +441,8 @@ if __name__ == '__main__':
     # roi = [3000,4200,8000,300,300,300] # missed segment
     # roi = [4400,5900,7200,500,500,500] # close axons
     # roi = [3700,4300,7800,300,300,300] # axons
-    # roi = [5900,2000,6000,500,500,500] # weak cortex signal
-    '''
+    roi = [5900,2000,6000,500,500,500] # weak cortex signal
+    # '''
 
 
     '''
@@ -496,9 +468,9 @@ if __name__ == '__main__':
     roi = [7000,5600,10000,300,300,300]
     '''
 
-    image_path = '/home/bean/workspace/data/seg_datasets/c002_labeled/skels/img_1.tif'
+    # image_path = '/home/bean/workspace/data/seg_datasets/c002_labeled/skels/img_1.tif'
+    
     image = wrap_image(image_path)
-    roi = image.roi
     segs = seger.process_whole(image_path, roi=roi)
     img = image.from_roi(roi)
 

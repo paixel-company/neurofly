@@ -1,8 +1,10 @@
-from ntools.dbio import read_edges, read_nodes, delete_nodes, add_nodes, add_edges, check_node, uncheck_nodes, augment_nodes, change_type
+from ntools.dbio import read_edges, read_nodes, delete_nodes, add_nodes, add_edges, check_node, uncheck_nodes, change_type
 from magicgui import magicgui, widgets
 from ntools.image_reader import wrap_image
 from scipy.spatial import KDTree
 from napari.utils.notifications import show_info
+from ntools.deconv import Deconver
+import functools
 import numpy as np
 import networkx as nx
 import napari
@@ -25,8 +27,8 @@ class Annotator:
         # labeling mode
         self.image_layer = self.viewer.add_image(np.ones((64, 64, 64), dtype=np.uint16),name='image',visible=False)
         self.point_layer = self.viewer.add_points(None,ndim=3,size=None,shading='spherical',edge_width=0,properties=None,face_colormap='hsl',name='points',visible=False)
-        self.edge_layer = self.viewer.add_vectors(None,ndim=3,name='added edges',visible=False)
-        self.ex_edge_layer = self.viewer.add_vectors(None,ndim=3,name='existing edges',visible=False,edge_color='orange')
+        self.edge_layer = self.viewer.add_vectors(None,ndim=3,name='added edges',vector_style='triangle',visible=False)
+        self.ex_edge_layer = self.viewer.add_vectors(None,ndim=3,name='existing edges',vector_style='line',visible=False,edge_color='orange')
         # ------------------------
 
         self.add_control() # control panel
@@ -51,13 +53,16 @@ class Annotator:
         self.viewer.bind_key('q', self.switch_mode,overwrite=True)
         self.viewer.bind_key('r', self.recover,overwrite=True)
         self.viewer.bind_key('g', self.switch_layer,overwrite=True)
-        self.viewer.bind_key('d', self.refresh,overwrite=True)
+        self.viewer.bind_key('d', self.refresh, overwrite=True)
         self.viewer.bind_key('f', self.submit_result,overwrite=True)
         self.viewer.bind_key('w', self.connect_one_nearest,overwrite=True)
         self.viewer.bind_key('e', self.connect_two_nearest,overwrite=True)
         self.viewer.bind_key('b', self.last_task,overwrite=True)
         self.viewer.bind_key('s', self.label_soma,overwrite=True)
         self.viewer.bind_key('a', self.label_ambiguous,overwrite=True)
+        self.viewer.bind_key('n', self.get_next_task,overwrite=True)
+        self.viewer.bind_key('i', self.deconvolve,overwrite=True)
+
 
         self.panorama_points.mouse_drag_callbacks.append(self.node_selection)
         self.point_layer.mouse_drag_callbacks.append(self.node_operations)
@@ -68,6 +73,7 @@ class Annotator:
         self.user_name = widgets.LineEdit(label="user name", value='tester')
         self.image_path = widgets.FileEdit(label="image path")
         self.db_path = widgets.FileEdit(label="database path")
+        self.deconv_path = widgets.FileEdit(label="Deconv model weight")
         self.image_switch = widgets.CheckBox(value=False,text='show panorama image')
         self.segs_switch = widgets.CheckBox(value=True,text='show/hide long segments')
         self.refresh_panorama_button = widgets.PushButton(text="refresh panorama")
@@ -78,7 +84,6 @@ class Annotator:
         self.max_size = widgets.Slider(label="max size", value=10, min=1, max=20)
         self.mode_switch = PushButton(text="switch mode (q)")
         self.mode_switch.mode = 'panorama'
-
         self.selected_node = widgets.LineEdit(label="node selection", value=0)
         self.total_length = widgets.LineEdit(label="total length", value=0)
         self.nodes_left = widgets.LineEdit(label="nodes left", value=0)
@@ -92,6 +97,7 @@ class Annotator:
         self.proofreading_switch = widgets.CheckBox(value=False,text='Proofreading')
         self.soma_buttom = widgets.PushButton(text="label/unlabel soma (s)")
         self.ambiguous_button = widgets.PushButton(text="label/unlabel ambiguous (a)")
+        self.next_task_button = widgets.PushButton(text="get next task (n)")
         # ---------------------------
 
         # ----- widgets bindings -----
@@ -99,17 +105,20 @@ class Annotator:
         self.refresh_panorama_button.clicked.connect(self.refresh_panorama)
         self.mode_switch.clicked.connect(self.switch_mode)
         self.image_size.changed.connect(self.clip_value)
-        self.refresh_button.clicked.connect(self.refresh)
+        self.refresh_button.clicked.connect(lambda: self.refresh(self.viewer,keep_image=False))
         self.recover_button.clicked.connect(self.recover)
         self.return_button.clicked.connect(self.last_task)
         self.soma_buttom.clicked.connect(self.label_soma)
         self.ambiguous_button.clicked.connect(self.label_ambiguous)
+        self.next_task_button.clicked.connect(self.get_next_task)
+        self.deconv_path.changed.connect(self.load_deconver)
         # ---------------------------
 
         self.container = widgets.Container(widgets=[
             self.user_name,
             self.image_path,
             self.db_path,
+            self.deconv_path,
             self.image_switch,
             self.segs_switch,
             self.min_length,
@@ -128,11 +137,55 @@ class Annotator:
             self.recover_button,
             self.soma_buttom,
             self.ambiguous_button,
+            self.next_task_button,
             self.submit_button
             ])
 
         self.viewer.window.add_dock_widget(self.container, area='right')
+    
 
+
+    def load_deconver(self):
+        self.deconver = Deconver(str(self.deconv_path.value))
+        show_info("Doconvolution model loaded")
+    
+
+
+    def deconvolve(self,viewer):
+        size = list(self.image_layer.data.shape)
+        if (np.array(size)<=np.array([128,128,128])).all():
+            sr_img = self.deconver.process_one(self.image_layer.data)
+            self.image_layer.data = sr_img
+            self.refresh(self.viewer,keep_image=True)
+
+
+    def get_next_task(self,viewer):
+        # find the largest unchecked component, set one of its endings selected node.
+        connected_components = list(nx.connected_components(self.G))
+        connected_components.sort(key=len)
+
+        unchecked_nodes = []
+        for cc in connected_components[::-1]:
+            unchecked_nodes = []
+            for node in cc:
+                if ((self.G.degree(node) == 1 and self.G.nodes[node]['checked'] == 0)) or self.G.nodes[node]['checked'] == -1:
+                    unchecked_nodes.append(node)
+            if len(unchecked_nodes)>0:
+                break
+        
+        if len(unchecked_nodes)==0:
+            show_info("all nodes checked")
+            return
+
+        self.selected_node.value = str(unchecked_nodes[0])
+        self.connected_nodes = []
+        self.delected_nodes = {
+            'nodes': [],
+            'edges': []
+        }
+        self.added_nodes = []
+        self.refresh_edge_layer()
+        self.refresh(self.viewer,keep_image=False)
 
 
     def label_soma(self,viewer):
@@ -156,6 +209,7 @@ class Annotator:
             change_type(str(self.db_path.value),node_id,0)
             self.G.nodes[node_id]['type'] = 0
             show_info("{node_id} labeled as normal")
+
 
     def connect_one_nearest(self,viewer):
         # find one closest neighbour point, add it to self.connected_nodes
@@ -206,7 +260,7 @@ class Annotator:
             self.edge_layer.visible = True
             self.ex_edge_layer.visible = True
             self.viewer.camera.zoom = 5
-            self.refresh(self.viewer)
+            self.refresh(self.viewer,keep_image=False)
         else:
             # remove current recordings
             self.submit_result(self.viewer)
@@ -233,14 +287,19 @@ class Annotator:
             self.G.nodes[last_node]['checked'] = -1
             self.selected_node.value = str(last_node)
             self.connected_nodes = []
+            self.added_nodes = []
+            self.delected_nodes = {
+                'nodes': [],
+                'edges': []
+            }
             self.submit_button.history.remove(last_node)
             self.refresh_edge_layer()
-            self.refresh(self.viewer)
+            self.refresh(self.viewer,keep_image=False)
         else:
             show_info("No history recorded")
 
 
-    def refresh(self, viewer):
+    def refresh(self, viewer, keep_image=True):
         # update canvas according to center and size
         # it only needs one node id to generate one task
         # 1. choose one unchecked node from CC as center node
@@ -280,7 +339,6 @@ class Annotator:
             self.selected_node.value = str(selection)
             connected_components = [list(nx.node_connected_component(self.G, selection))]
             nbrs = connected_components[0]
-
 
         coords = []
         sizes = []
@@ -326,20 +384,27 @@ class Annotator:
         }
 
 
-        image = self.image.from_roi([i-self.image_size.value//2 for i in c_coord]+[self.image_size.value,self.image_size.value,self.image_size.value])
+        if keep_image == False:
+            image = self.image.from_roi([i-self.image_size.value//2 for i in c_coord]+[self.image_size.value,self.image_size.value,self.image_size.value])
 
-        translate = [i-self.image_size.value//2 for i in c_coord]
+            translate = [i-self.image_size.value//2 for i in c_coord]
 
-        local_coords = np.array(coords) - np.array(translate)
+            local_coords = np.array(coords) - np.array(translate)
 
-        mask = np.all((local_coords>= np.array([0,0,0])) & (local_coords < np.array([self.image_size.value,self.image_size.value,self.image_size.value])), axis=1)
-        local_coords = local_coords[mask]
+            mask = np.all((local_coords>= np.array([0,0,0])) & (local_coords < np.array([self.image_size.value,self.image_size.value,self.image_size.value])), axis=1)
+            local_coords = local_coords[mask]
 
-        intensities = image[local_coords[:, 0], local_coords[:, 1], local_coords[:, 2]]
-        mean_value = np.mean(intensities)
-        std_value = np.std(intensities)
-        min_value = np.min(intensities)
-        max_value = np.max(intensities)
+            intensities = image[local_coords[:, 0], local_coords[:, 1], local_coords[:, 2]]
+            mean_value = np.mean(intensities)
+            std_value = np.std(intensities)
+            min_value = np.min(intensities)
+            max_value = np.max(intensities)
+
+            self.image_layer.data = image
+            self.image_layer.reset_contrast_limits()
+            self.image_layer.contrast_limits = [min(mean_value//2,200),mean_value+std_value]
+            self.image_layer.translate = translate
+            self.viewer.camera.center = c_coord
 
 
         self.point_layer.data = np.array(coords)
@@ -349,12 +414,6 @@ class Annotator:
         self.point_layer.size = sizes
         self.point_layer.selected_data = []
         self.ex_edge_layer.data = np.array(edges)
-        
-        self.image_layer.data = image
-        self.image_layer.reset_contrast_limits()
-        self.image_layer.contrast_limits = [min(mean_value//2,200),mean_value+std_value]
-        self.image_layer.translate = translate
-        self.viewer.camera.center = c_coord
         self.viewer.layers.selection.active = self.point_layer
 
 
@@ -396,10 +455,10 @@ class Annotator:
 
         coords = []
         coord_ids = []
+        # update self.kdtree
         if len(self.added_nodes)!=0:
             # added_nodes already in self.G, not in self.kdtree
-            # TODO fix bug that node has no 'coord'
-            for i,node in enumerate(list(self.G)):
+            for node in list(self.G):
                 coords.append(self.G.nodes[node]['coord'])
                 coord_ids.append(self.G.nodes[node]['nid'])
             self.kdtree = KDTree(np.array(coords))
@@ -414,7 +473,7 @@ class Annotator:
 
         self.connected_nodes = []
         self.edge_layer.data = None
-        self.refresh(self.viewer)
+        self.refresh(self.viewer, keep_image=False)
 
 
     def update_database(self):
@@ -470,8 +529,6 @@ class Annotator:
             show_info('switch to panorama mode first')
             return
         if self.G is None:
-            # check if nodes table has type column
-            augment_nodes(self.db_path.value)
             # load graph and kdtree from database
             nodes = read_nodes(self.db_path.value)
             edges = read_edges(self.db_path.value)
@@ -647,7 +704,7 @@ class Annotator:
         match operation:
             case (1, 'proofreading', None): # switch center node
                 self.selected_node.value = str(node_id)
-                self.refresh(self.viewer)
+                self.refresh(self.viewer,keep_image=False)
 
             case (2, 'proofreading', None): # label node as unchecked
                 if self.G.nodes[node_id]['checked'] == -1:
@@ -711,13 +768,15 @@ class Annotator:
                     self.refresh_edge_layer()
                     self.refresh(self.viewer)
 
+
             case (1, 'labeling', 'Shift'): # switch center node
                 self.connected_nodes = []
                 self.selected_node.value = str(node_id)
                 if self.G.nodes[node_id]['checked'] >= 0:
                     self.G.nodes[node_id]['checked'] = -1
                 self.refresh_edge_layer()
-                self.refresh(self.viewer)
+                self.refresh(self.viewer,keep_image=False)
+            
 
             case _ :
                 show_info("operation not supported")
@@ -763,25 +822,6 @@ class Annotator:
             self.refresh(self.viewer)
             self.viewer.layers.selection.active = self.image_layer
 
-
-
-    def save_lyp(self):
-        '''
-        load lyp template
-        get all large connected components, save each as a single .lyp file
-        save undirected graph, i.e. add all neighbours to 'parent_ids' except soma node
-        for soma node, add "#Soma" to 'message'
-        node template:
-        {
-            "creator_id": 0,
-            "group_id": "1",
-            "id": "5030239",
-            "message": "", # if soma node, "#Soma" else ""
-            "parent_ids": "5030238",
-            "position": "49722.937 32652.702 44400.602",
-            "timestamp": "1693814131" #unix timestamp
-        }
-        '''
 
 
 def main():

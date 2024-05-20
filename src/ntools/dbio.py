@@ -16,7 +16,7 @@ def segs2db(segs,path):
         {
             nid: int, PRIMARY KEY
             coord: str,
-            type: int,
+            type: int, # 1 for Soma, 0 for normal node
             checked: int
         }
     edge:
@@ -132,6 +132,7 @@ def read_segs(db_path):
     return segs
 
 
+
 def read_nodes(db_path):
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
@@ -168,6 +169,7 @@ def read_edges(db_path):
     return edges
 
 
+"""
 def augment_nodes(db_path):
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
@@ -201,6 +203,7 @@ def augment_nodes(db_path):
 
     conn.commit()
     conn.close()
+"""
 
 
 def delete_nodes(path,node_ids):
@@ -210,6 +213,19 @@ def delete_nodes(path,node_ids):
     cursor.execute("DELETE FROM nodes WHERE nid IN ({})".format(','.join(map(str, node_ids))))
     # Remove edges where either source or destination node is in the given list
     cursor.execute("DELETE FROM edges WHERE src IN ({}) OR des IN ({})".format(','.join(map(str, node_ids)), ','.join(map(str, node_ids))))
+    conn.commit()
+    conn.close()
+
+
+
+def delete_edges(path, edges):
+    conn = sqlite3.connect(path)
+    cursor = conn.cursor()
+    for edge in edges:
+        src, des = edge
+        # Delete both (src, des) and (des, src) if they exist
+        cursor.execute("DELETE FROM edges WHERE src=? AND des=?", (src, des))
+        cursor.execute("DELETE FROM edges WHERE src=? AND des=?", (des, src))
     conn.commit()
     conn.close()
 
@@ -239,9 +255,24 @@ def add_edges(path, edges, user_name='seger'):
 
     for edge in undirected_edges:
         cursor.execute(f"INSERT OR IGNORE INTO edges (src, des, date, creator) VALUES (?, ?, ?, ?)",
-                    (edge[0], edge[1], datetime.now(), 'seger'))
+                    (edge[0], edge[1], datetime.now(), user_name))
     conn.commit()
     conn.close()
+
+
+
+def get_max_nid(path):
+    conn = sqlite3.connect(path)
+    cursor = conn.cursor()
+    
+    # Retrieve the highest existing nid value
+    cursor.execute("SELECT MAX(nid) FROM nodes")
+    max_nid = cursor.fetchone()[0] or 0  # If there are no existing items, set max_nid to 0
+    conn.commit()
+    conn.close()
+    return max_nid
+
+
 
 
 def check_node(path,nid):
@@ -278,6 +309,7 @@ def change_type(path,nid,type):
     conn.close()
 
 
+
 def get_size(path):
     if not os.path.exists(path):
         return 0
@@ -290,6 +322,29 @@ def get_size(path):
     return count
 
 
+
+def get_edges_by(db_path, creator=None):
+    '''
+    if creator is left empty, get all edges labeled manually
+    '''
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    if creator is None:
+        cursor.execute("SELECT * FROM edges WHERE creator != ?", ('seger',))
+    else:
+        cursor.execute("SELECT * FROM edges WHERE creator=?", (creator,))
+    rows = cursor.fetchall()
+    edges = []
+    for row in rows:
+        data = {
+            'src': row[0],
+            'des': row[1],
+            'date': row[2],
+            'creator': row[3],
+        }
+        edges.append(data)
+    conn.close()
+    return edges
 
 
 
@@ -310,4 +365,4 @@ if __name__ == '__main__':
     # print(nodes)
 
     db_path = 'tests/z002_final.db'
-    save_lyp(db_path,template_path='src/weights/template.lyp')
+    # save_lyp(db_path,template_path='src/weights/template.lyp')
