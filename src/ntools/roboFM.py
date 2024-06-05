@@ -273,6 +273,7 @@ if __name__ == '__main__':
     roi = offset + size
     img = image.from_roi(roi)
 
+
     viewer = napari.Viewer(ndisplay=3)
     viewer.add_image(img,translate=offset)
     viewer.add_vectors(rmf_tv, edge_width=0.1, length=2, vector_style='arrow', edge_color='blue', name='Tangent')

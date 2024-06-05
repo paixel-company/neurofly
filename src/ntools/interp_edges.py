@@ -32,14 +32,13 @@ def interp_edge(edge,image,interval=3,dis_thres=6):
     tar_l = [i-j for i,j in zip(tar,offset)]
     dis = np.sqrt(sum([(i-j)**2 for i,j in zip(src_l,tar_l)]))
 
-    if dis<dis_thres:
+    if dis<dis_thres or dis>300:
         return [src,tar]
     
     sa = NBAStarSearch(img,src_l,tar_l)
     path = None
     try:
         path = sa.search()
-        # print(path)
     except:
         print(f"Can't solve path from {src} to {tar}")
         return [src, tar]
@@ -58,9 +57,8 @@ def interp_all(db_path,image_path,interval=3,dis_thres=6):
     # find all edges labeled manually
     nodes = read_nodes(db_path)
     nodes = {n['nid']: n for n in nodes}
-    edges = np.array(get_edges_by(db_path,'tester'))
+    edges = get_edges_by(db_path)
     edges = [[e['src'],e['des']] for e in edges]
-    edges = np.unique(edges,axis=0).tolist()
     edges = [edge for edge in edges if edge[0]<edge[1]]
     max_id = get_max_nid(db_path)
     for edge in tqdm(edges):

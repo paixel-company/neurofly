@@ -8,7 +8,6 @@ import networkx as nx
 import torch.nn as nn
 from scipy.ndimage import median_filter
 from scipy.spatial.distance import cdist
-from scipy.ndimage import label
 from skimage.morphology import ball, binary_dilation, binary_erosion
 from skimage.feature import peak_local_max
 from skimage.morphology import skeletonize
@@ -41,6 +40,7 @@ def get_norm_layer(norm_type='instance', dim=2):
     else:
         raise NotImplementedError('normalization layer [%s] is not found' % norm_type)
     return norm_layer
+
 
 # Conv block
 class DoubleConv(nn.Module):
@@ -129,7 +129,7 @@ class UNet(nn.Module):
 
 
 class Seger():
-    def __init__(self,ckpt_path,bg_thres,device=None):
+    def __init__(self,ckpt_path,bg_thres,l_clip=None,device=None):
         if 'tiny' in ckpt_path:
             model_dims = [32,64,128]
         elif 'medium' in ckpt_path:
@@ -148,6 +148,7 @@ class Seger():
         self.model = model
         self.bw = 14 #border width (128-100)//2
         self.bg_thres = bg_thres
+        self.l_clip = l_clip
 
 
     def preprocess(self,img,percentiles=[0.1,1.0]):
@@ -159,6 +160,8 @@ class Seger():
         if flattened_arr[clip_high]<self.bg_thres:
             return None
         clipped_arr = np.clip(img, flattened_arr[clip_low], flattened_arr[clip_high])
+        if self.l_clip is not None:
+            clipped_arr = np.clip(clipped_arr,self.l_clip,65535)
         min_value = np.min(clipped_arr)
         max_value = np.max(clipped_arr)
         filtered = clipped_arr
@@ -284,15 +287,16 @@ class Seger():
         x_border = 3
         y_border = 3
         z_border = 3
-        mask[:, :, :x_border] = 0
-        mask[:, :, -x_border:] = 0
-        mask[:, :, :y_border] = 0
-        mask[:, :, -y_border:] = 0
-        mask[:, :, :z_border] = 0
-        mask[:, :, -z_border:] = 0
 
 
         skel = skeletonize(mask)
+        skel[:, :, :x_border] = 0
+        skel[:, :, -x_border:] = 0
+        skel[:, :, :y_border] = 0
+        skel[:, :, -y_border:] = 0
+        skel[:, :, :z_border] = 0
+        skel[:, :, -z_border:] = 0
+
         labels = label(skel, connectivity=3)
         regions = regionprops(labels)
 
@@ -341,6 +345,7 @@ class Seger():
         return skel, segments
 
 
+
     def process_whole(self,image_path,roi=None,dec=None):
         '''
         cut whole brain image to [300,300,300] cubes without splices (z coordinates % 300 == 0)
@@ -378,6 +383,7 @@ def command_line_interface():
     parser.add_argument('-image_path', type=str, help="path to the input image, only zarr, ims, tif are currently supported")
     parser.add_argument('-db_path', type=str, default=None, help="path to the output database file")
     parser.add_argument('-roi', type=int, nargs='+', default=None, help="image roi, if kept None, process the whole image")
+    parser.add_argument('-l_clip', type=int, default=None, help="value to clip voxel values, use this to repress bright noise")
     parser.add_argument('-vis', action='store_true', default=False, help="whether to visualize result after segmentation")
     args = parser.parse_args()
     if args.weight_path is None:
@@ -386,7 +392,7 @@ def command_line_interface():
     print(f"Using weight: {args.weight_path}")
     print(f"Processing image: {args.image_path}, roi: {args.roi}")
 
-    seger = Seger(args.weight_path ,bg_thres=150)
+    seger = Seger(args.weight_path,l_clip=args.l_clip,bg_thres=150) # bg_thres is used to filter out empty image like image borders
     segs = seger.process_whole(args.image_path, roi=args.roi)
 
     if args.db_path is not None:
@@ -439,9 +445,9 @@ if __name__ == '__main__':
     # roi = [2300,3600,10000,500,500,500] # weak cortex
     # roi = [3050,4300,8400,128,128,128]
     # roi = [3000,4200,8000,300,300,300] # missed segment
-    # roi = [4400,5900,7200,500,500,500] # close axons
+    roi = [4400,5900,7200,500,500,500] # close axons
     # roi = [3700,4300,7800,300,300,300] # axons
-    roi = [5900,2000,6000,500,500,500] # weak cortex signal
+    # roi = [5900,2000,6000,500,500,500] # weak cortex signal
     # '''
 
 

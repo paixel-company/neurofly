@@ -20,6 +20,7 @@ class Recorder:
         #establish key bindings
         self.add_callback()
 
+
     def add_callback(self):
         self.viewer.bind_key('r', self.add_frame)
         self.viewer.bind_key('t', self.play_back)
