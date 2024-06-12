@@ -311,13 +311,23 @@ class Seger():
             spanning_tree = nx.minimum_spanning_tree(graph, algorithm='kruskal', weight=None)
             graph.remove_edges_from(set(graph.edges) - set(spanning_tree.edges))
             branch_nodes = [node for node, degree in graph.degree() if degree >= 3]
-
             branch_nbrs = []
             for node in branch_nodes:
                 branch_nbrs += list(graph.neighbors(node))
-            graph.remove_nodes_from(branch_nbrs)
 
+            for bn in branch_nodes:
+                if len(list(graph.neighbors(node)))==3:
+                    segments.append(
+                        {
+                            'sid' : None,
+                            'points' : [[i+j for i,j in zip(points[bn],offset)]],
+                            'sampled_points' : [[i+j for i,j in zip(points[bn],offset)]]
+                        }
+                    )
+
+            graph.remove_nodes_from(branch_nbrs)
             graph.remove_nodes_from(branch_nodes)
+
             connected_components = list(nx.connected_components(graph))
 
             for nodes in connected_components:
@@ -338,8 +348,7 @@ class Seger():
                     {
                         'sid' : None,
                         'points' : seg_points,
-                        'sampled_points' : sampled_points, 
-                        'nbrs' : [],
+                        'sampled_points' : sampled_points
                     }
                 )
         return skel, segments
