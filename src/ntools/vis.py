@@ -65,8 +65,8 @@ def vis_edges_by_creator(viewer,db_path,color_dict):
 
 if __name__ == '__main__':
     from ntools.image_reader import wrap_image
-    db_path = '/home/bean/workspace/data/RM009_axons_1.db'
-    image_path = '/home/bean/workspace/data/RM009_axons_1.tif'
+    db_path = '/Users/bean/workspace/data/RM009_arbor_1.db'
+    image_path = '/Users/bean/workspace/data/RM009_arbor_1.tif'
     color_dict = {
         'tester': 'red',
         'seger': 'yellow',

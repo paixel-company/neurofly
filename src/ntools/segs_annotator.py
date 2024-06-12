@@ -1,10 +1,9 @@
 from ntools.dbio import read_edges, read_nodes, delete_nodes, add_nodes, add_edges, check_node, uncheck_nodes, change_type
-from magicgui import magicgui, widgets
+from magicgui import widgets
 from ntools.image_reader import wrap_image
 from scipy.spatial import KDTree
 from napari.utils.notifications import show_info
 from ntools.deconv import Deconver
-import functools
 import numpy as np
 import networkx as nx
 import napari
@@ -91,12 +90,12 @@ class Annotator:
         self.refresh_button = widgets.PushButton(text="refresh (d)")
         self.return_button = widgets.PushButton(text="shit I misclicked (b)")
         self.recover_button = widgets.PushButton(text="recover (r)")
-        # next task is just ask for new task without submitting
         self.submit_button = PushButton(text="submit (f)")
         self.submit_button.history = []
         self.proofreading_switch = widgets.CheckBox(value=False,text='Proofreading')
         self.soma_buttom = widgets.PushButton(text="label/unlabel soma (s)")
         self.ambiguous_button = widgets.PushButton(text="label/unlabel ambiguous (a)")
+        # next task is just ask for new task without submitting
         self.next_task_button = widgets.PushButton(text="get next task (n)")
         # ---------------------------
 
