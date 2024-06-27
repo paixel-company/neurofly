@@ -1,7 +1,8 @@
 from datetime import datetime
 import sqlite3
 import os
-import time
+import glob
+import numpy as np
 
 
 def segs2db(segs,path):
@@ -237,7 +238,7 @@ def add_nodes(path,nodes):
     cursor = conn.cursor()
     for node in nodes:
         cursor.execute(f"INSERT OR IGNORE INTO nodes (nid, coord, type, checked) VALUES (?, ?, ?, ?)",
-                    (node['nid'], sqlite3.Binary(str(node['coord']).encode()), node['type'], 0))
+                    (node['nid'], sqlite3.Binary(str(node['coord']).encode()), node['type'], node['checked']))
     conn.commit()
     conn.close()
 
@@ -348,21 +349,76 @@ def get_edges_by(db_path, creator=None):
 
 
 
+def initialize_db(db_path):
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    cursor.execute(
+            '''
+            CREATE TABLE IF NOT EXISTS nodes(
+                nid INTEGER PRIMARY KEY,
+                coord TEXT,
+                type INTEGER,
+                checked INTEGER
+            )
+            '''
+        )
+
+    cursor.execute(
+            '''
+            CREATE TABLE IF NOT EXISTS edges(
+                src INTEGER,
+                des INTEGER,
+                date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                creator TEXT,
+                PRIMARY KEY (src,des)
+            )
+            '''
+        )
+    conn.close()
+
+def swc2db(swc_dir,db_path):
+    '''
+    swc files to database file, facilitating data manipulation
+    swc: nid type x y z radius parent
+    type: 1 for soma, 2 for axon, 3 for (basal) dendrite, 4 for apical dendrite
+    swc file format: http://www.neuronland.org/NLMorphologyConverter/MorphologyFormats/SWC/Spec.html
+    in database: 1 for Soma 0 for others
+    '''
+    initialize_db(db_path)
+    swc_files = glob.glob(os.path.join(swc_dir,'*.swc'), recursive=True)
+    for swc_file in swc_files:
+        data = np.loadtxt(swc_file)[:,:7]
+        # check structure, each file should have exactly one soma
+        num_of_soma = np.sum(data[:,1] == 1)
+        if num_of_soma != 1:
+            print(f'This .swc file contains {num_of_soma} somas, which is insane')
+            continue
+        nodes = []
+        edges = []
+        if os.path.isfile(db_path):
+            nid_offset = get_max_nid(db_path) + 2
+        else:
+            nid_offset = 0
+
+        for [nid,type,x,y,z,radius,parent] in data.tolist():
+            # nodes: [{'nid','coord','type','checked'},...]
+            # edge: [[src,des],...], username
+            nodes.append({
+                'nid': int(nid) + nid_offset,
+                'coord': [x,y,z],
+                'type': 1 if type == 1 else 0,
+                'checked': 1
+            })
+            edges.append([nid+nid_offset,parent+nid_offset])
+            edges.append([parent+nid_offset,nid+nid_offset])
+
+        add_nodes(db_path,nodes)
+        add_edges(db_path,edges,'terafly')
+
+
+
 if __name__ == '__main__':
-    # db_path = 'tests/z002_re.db'
-    # nodes = read_nodes(db_path)
-    # import numpy as np
-    # coords = []
-    # for node in nodes:
-    #     coords.append(node['coord'])
-    # coords = np.array(coords)
-    # for i in range(3):
-    #     print(np.min(coords[:,i]),np.max(coords[:,i]-np.min(coords[:,i])))
-
-    # db_path = 'tests/z002.db'
-    # augment_nodes(db_path)
-    # nodes = read_nodes(db_path)
-    # print(nodes)
-
-    db_path = 'tests/z002_final.db'
-    # save_lyp(db_path,template_path='src/weights/template.lyp')
+    swc_dir = '/home/bean/workspace/data/fmost_swc'
+    db_path = '/home/bean/workspace/data/fmost.db'
+    swc2db(swc_dir,db_path)
+    pass

@@ -11,19 +11,27 @@ def show_segs_as_instances(segs,viewer,size=0.8):
         ...
     ]
     '''
-    print(f'num of segs: {len(segs)}')
     points = []
     colors = []
+    num_segs = 0
+    num_branches = 0
     for seg in segs:
         seg_color = random.random()
         points+=seg
         colors+=[seg_color for _ in seg]
+        if len(seg)>=2:
+            num_segs+=1
+        if len(seg)==1:
+            num_branches+=1
 
     colors = np.array(colors)
     colors = (colors-np.min(colors))/(np.max(colors)-np.min(colors))
     properties = {
         'colors': colors
     }
+
+    print(f'num of segs (length >= 2): {num_segs}')
+    print(f'num of branch points: {num_branches}')
     print(f'num of points: {len(points)}')
     point_layer = viewer.add_points(np.array(points),ndim=3,face_color='colors',size=size,edge_color='colors',shading='spherical',edge_width=0,properties=properties,face_colormap='turbo')
 

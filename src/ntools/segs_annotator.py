@@ -386,13 +386,13 @@ class Annotator:
         if keep_image == False:
             image = self.image.from_roi([i-self.image_size.value//2 for i in c_coord]+[self.image_size.value,self.image_size.value,self.image_size.value])
 
-            translate = [i-self.image_size.value//2 for i in c_coord]
+            translate = [int(i)-self.image_size.value//2 for i in c_coord]
 
             local_coords = np.array(coords) - np.array(translate)
 
             mask = np.all((local_coords>= np.array([0,0,0])) & (local_coords < np.array([self.image_size.value,self.image_size.value,self.image_size.value])), axis=1)
             local_coords = local_coords[mask]
-
+            local_coords = local_coords.astype(int)
             intensities = image[local_coords[:, 0], local_coords[:, 1], local_coords[:, 2]]
             mean_value = np.mean(intensities)
             std_value = np.std(intensities)

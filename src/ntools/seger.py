@@ -434,9 +434,11 @@ if __name__ == '__main__':
 
     # seger = Seger('src/weights/rm009_tiny.pth',bg_thres=150)
     # seger = Seger('src/weights/universal_dumpy.pth',bg_thres=150)
-    seger = Seger('src/weights/universal_medium.pth',bg_thres=150)
+    seger = Seger('src/weights/universal_tiny.pth',bg_thres=150)
+    # seger = Seger('src/weights/universal_medium.pth',bg_thres=150)
     # seger = Seger('src/weights/z002_tiny.pth',bg_thres=150)
     # seger = Seger('src/weights/lzh_tiny.pth',bg_thres=150)
+    # seger = Seger('src/weights/dumpy_smallset.pth',bg_thres=150)
 
 
     # '''
@@ -454,7 +456,7 @@ if __name__ == '__main__':
     # roi = [2300,3600,10000,500,500,500] # weak cortex
     # roi = [3050,4300,8400,128,128,128]
     # roi = [3000,4200,8000,300,300,300] # missed segment
-    roi = [4400,5900,7200,500,500,500] # close axons
+    # roi = [4400,5900,7200,500,500,500] # close axons
     # roi = [3700,4300,7800,300,300,300] # axons
     # roi = [5900,2000,6000,500,500,500] # weak cortex signal
     # '''

@@ -3,6 +3,7 @@ import napari
 import random
 import numpy as np
 import argparse
+import shutil
 from tifffile import imread, imwrite
 from skimage.exposure import match_histograms
 from tqdm import tqdm
@@ -25,11 +26,19 @@ def get_patch_coords(roi,block_size):
     return indices
 
 
-def gen_dataset(source_dir, out_dir, N=512):
+def extract_number(filename, prefix):
+    return filename[len(prefix):-4]  # Removes prefix and file extension
+
+
+def gen_dataset(source_dir, out_dir, n_fg, n_bg):
     skel_source_dir = os.path.join(source_dir, 'skels')
     bg_source_dir = os.path.join(source_dir, 'bg')
 
-    os.mkdir(out_dir)
+    if os.path.exists(out_dir):
+        shutil.rmtree(out_dir)
+    else:
+        os.mkdir(out_dir)
+
     img_dir = os.path.join(out_dir, 'img')
     mask_dir = os.path.join(out_dir, 'mask')
     bg_dir = os.path.join(out_dir, 'img_bg')
@@ -38,12 +47,21 @@ def gen_dataset(source_dir, out_dir, N=512):
     os.mkdir(mask_dir)
     os.mkdir(bg_dir)
 
-    image_paths = [os.path.join(skel_source_dir, filename) for filename in os.listdir(skel_source_dir) if 'img' in filename and 'json' not in filename]
 
-    mask_paths = [filename.replace('img', 'mask') for filename in image_paths]
+    image_names = [filename for filename in os.listdir(skel_source_dir) if 'img' in filename]
+    mask_names = [filename for filename in os.listdir(skel_source_dir) if 'mask' in filename]
+
+    image_numbers = set(extract_number(img, "img_") for img in image_names)
+    mask_numbers = set(extract_number(mask, "mask_") for mask in mask_names)
+
+    common_numbers = image_numbers.intersection(mask_numbers)
+
+    image_paths = [os.path.join(skel_source_dir, f"img_{num}.tif") for num in common_numbers]
+    mask_paths = [os.path.join(skel_source_dir, f"mask_{num}.tif") for num in common_numbers]
+
 
     numbers = list(range(0, len(image_paths)))
-    combinations = list(generate_random_combinations(numbers, N))
+    combinations = list(generate_random_combinations(numbers, n_fg))
 
     for i,[p1,p2,p3] in tqdm(enumerate(combinations)):
         img_path1 = image_paths[p1]
@@ -81,7 +99,8 @@ def gen_dataset(source_dir, out_dir, N=512):
 
     image_paths = [os.path.join(bg_source_dir, filename) for filename in os.listdir(bg_source_dir) if '.tif' in filename]
 
-    num = 1
+
+    blocks = []
     for image_path in image_paths:
         image = imread(image_path)
         size = list(image.shape)
@@ -89,10 +108,16 @@ def gen_dataset(source_dir, out_dir, N=512):
         patch_coords = get_patch_coords([0,0,0]+size,block_size)
         for [x,y,z] in patch_coords:
             block = image[x:x+block_size,y:y+block_size,z:z+block_size]
-            image_path = os.path.join(bg_dir, 'img_'+str(num)+'.tif')
-            imwrite(image_path,block,dtype=np.uint16)
-            num+=1
-    
+            blocks.append(block)
+
+    num = 1
+    random.shuffle(blocks)
+    n_bg = n_bg if n_bg<len(blocks) else len(blocks)
+    for block in tqdm(blocks[:n_bg]):
+        image_path = os.path.join(bg_dir, 'img_'+str(num)+'.tif')
+        imwrite(image_path,block,dtype=np.uint16)
+        num+=1
+
     print('finished')
 
 
@@ -101,13 +126,17 @@ def command_line_interface():
     parser = argparse.ArgumentParser(description="args for seger")
     parser.add_argument('-source', type=str, default=None, help="dir of labeled images")
     parser.add_argument('-out', type=str, help="dir of output augmented images")
-    parser.add_argument('-n', type=int, help="number of images")
+    parser.add_argument('-n_fg', type=int, help="number of images")
+    parser.add_argument('-n_bg', type=int, help="number of images")
     args = parser.parse_args()
+
+
 
     print(f"input dir: {args.source}")
     print(f"out dir: {args.out}")
-    print(f"number of images: {args.n}")
-    gen_dataset(args.labeled,args.out,N=args.n)
+    print(f"number of foreground images: {args.n_fg}")
+    print(f"number of background images: {args.n_bg}")
+    gen_dataset(args.source,args.out,n_fg=args.n_fg,n_bg=args.n_bg)
 
 
 
@@ -115,3 +144,4 @@ if __name__ == '__main__':
     source_dir = '/home/bean/workspace/data/seg_datasets/rm009_sr_labeled/'
     out_dir = '/home/bean/workspace/data/seg_datasets/rm009_sr_aug/'
     gen_dataset(source_dir,out_dir,N=2048)
+

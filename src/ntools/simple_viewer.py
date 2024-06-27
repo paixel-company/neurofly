@@ -52,15 +52,15 @@ class SimpleViewer:
 
     def clip_x(self):
         if self.clip.value == True:
-            self.x_size.value = (self.x_size.value//10)*10
+            self.x_size.value = (self.x_size.value//32)*32
 
     def clip_y(self):
         if self.clip.value == True:
-            self.y_size.value = (self.y_size.value//10)*10
+            self.y_size.value = (self.y_size.value//32)*32
 
     def clip_z(self):
         if self.clip.value == True:
-            self.z_size.value = (self.z_size.value//10)*10
+            self.z_size.value = (self.z_size.value//32)*32
 
 
     def refresh(self):

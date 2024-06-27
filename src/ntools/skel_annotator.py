@@ -212,6 +212,7 @@ class Annotator:
         image_path = self.image_path.value
         directory, image_name = os.path.split(image_path)
         json_name = image_name.replace('.tif','.json')
+        json_name = json_name.replace('img','segs')
 
         json_path = os.path.join(directory, json_name)
         with open(json_path, "w") as json_file:

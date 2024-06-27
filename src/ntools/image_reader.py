@@ -34,6 +34,7 @@ class Ims():
 
     def from_roi(self, coords, level=0, padding='constant'):
         # coords: [x_offset,y_offset,z_offset,x_size,y_size,z_size]
+        coords = [int(coord) for coord in coords]
         x_min, x_max = coords[0], coords[3]+coords[0]
         y_min, y_max = coords[1], coords[4]+coords[1]
         z_min, z_max = coords[2], coords[5]+coords[2]
@@ -59,6 +60,7 @@ class Ims():
 
     def from_local(self, coords, level=0):
         # coords: [x_offset,y_offset,z_offset,x_size,y_size,z_size]
+        coords = [int(coord) for coord in coords]
         x_min, x_max = coords[0], coords[3]+coords[0]
         y_min, y_max = coords[1], coords[4]+coords[1]
         z_min, z_max = coords[2], coords[5]+coords[2]
@@ -157,6 +159,7 @@ class Zarr():
 
     def from_local(self, coords):
         # coords: [x_offset,y_offset,z_offset,x_size,y_size,z_size]
+        coords = [int(coord) for coord in coords]
         x_min, x_max = coords[0], coords[3]+coords[0]
         y_min, y_max = coords[1], coords[4]+coords[1]
         z_min, z_max = coords[2], coords[5]+coords[2]
@@ -181,6 +184,7 @@ class Tiff():
         self.shape = self.roi[3:6]
     
     def __getitem__(self, indices):
+        coords = [int(coord) for coord in coords]
         x_min, x_max = indices[0].start, indices[0].stop
         y_min, y_max = indices[1].start, indices[1].stop
         z_min, z_max = indices[2].start, indices[2].stop
@@ -191,6 +195,7 @@ class Tiff():
 
     def from_roi(self, coords, padding='constant'):
         # coords: [x_offset,y_offset,z_offset,x_size,y_size,z_size]
+        coords = [int(coord) for coord in coords]
         x_min, x_max = coords[0], coords[3]+coords[0]
         y_min, y_max = coords[1], coords[4]+coords[1]
         z_min, z_max = coords[2], coords[5]+coords[2]
@@ -216,6 +221,7 @@ class Tiff():
 
     def from_local(self, coords):
         # coords: [x_offset,y_offset,z_offset,x_size,y_size,z_size]
+        coords = [int(coord) for coord in coords]
         x_min, x_max = coords[0], coords[3]+coords[0]
         y_min, y_max = coords[1], coords[4]+coords[1]
         z_min, z_max = coords[2], coords[5]+coords[2]
