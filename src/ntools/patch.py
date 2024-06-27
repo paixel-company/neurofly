@@ -27,6 +27,30 @@ def get_patch_rois(roi,block_size):
     return rois
 
 
+def get_subregions(region, subregion_size, overlap):
+    x0, y0, z0 = region[:3]
+    w, h, d = region[3:]
+    w_s, h_s, d_s = subregion_size
+    o_w, o_h, o_d = overlap
+
+    subregions = []
+
+    # Calculate step size
+    step_x = w_s - o_w
+    step_y = h_s - o_h
+    step_z = d_s - o_d
+
+    # Generate subregions
+    for x in range(x0, x0 + w, step_x):
+        for y in range(y0, y0 + h, step_y):
+            for z in range(z0, z0 + d, step_z):
+                # Ensure the subregion fits within the original region
+                if x + w_s <= x0 + w and y + h_s <= y0 + h and z + d_s <= z0 + d:
+                    subregions.append([x, y, z, w_s, h_s, d_s])
+
+    return subregions
+
+
 
 def get_patch_by_density(roi,block_size,segs):
     volume_size = roi[3:]
