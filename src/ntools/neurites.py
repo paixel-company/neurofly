@@ -80,6 +80,9 @@ class Neurites():
         return segs, intens
 
 
+    def get_branches_and_paths(self):
+        connected_components = list(nx.connected_components(self.G))
+
 
 if __name__ == '__main__':
     db_path = '/Users/bean/workspace/data/RM009_axons_1.db'

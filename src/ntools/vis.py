@@ -2,7 +2,7 @@ import napari
 import numpy as np
 import random
 from ntools.dbio import read_nodes,read_edges
-
+from scipy.spatial import KDTree
 
 def show_segs_as_instances(segs,viewer,size=0.8):
     '''
@@ -69,12 +69,99 @@ def vis_edges_by_creator(viewer,db_path,color_dict):
     viewer.add_vectors(vectors,edge_color=v_colors,edge_width=2,vector_style='line')
 
 
+def compare(gt,pred1,pred2=None):
+    gt_nodes = read_nodes(gt)
+    gt_coords = [n['coord'] for n in gt_nodes]
+    gt_nodes = {n['nid']: n for n in gt_nodes}
+    gt_nids = gt_nodes.keys()
+    gt_tree = KDTree(np.array(gt_coords))
+
+    pred1_nodes = read_nodes(pred1)
+    pred1_coords = [n['coord'] for n in pred1_nodes]
+    pred1_nodes = {n['nid']: n for n in pred1_nodes}
+    pred1_nids = list(pred1_nodes.keys())
+    pred1_tree = KDTree(pred1_coords)
+
+    pred2_nodes = read_nodes(pred2)
+    pred2_coords = [n['coord'] for n in pred2_nodes]
+    pred2_nodes = {n['nid']: n for n in pred2_nodes}
+    pred2_nids = list(pred2_nodes.keys())
+    pred2_tree  = KDTree(np.array(pred2_coords))
+    print(f"Ground truth length: {len(gt_nodes)}")
+
+
+    distances, _ = pred1_tree.query(np.array(gt_coords))
+    recalled = np.where(distances <= 4)[0]
+    false_negative = np.where(distances > 4)[0]
+    print(f"SR recall: {len(recalled)/len(gt_coords)}")
+
+
+    distances, _ = gt_tree.query(np.array(pred1_coords))
+    true_pos = np.where(distances <= 4)[0]
+    false_pos = np.where(distances > 4)[0]
+    true_pos = [pred1_nids[i] for i in true_pos]
+    false_pos = [pred1_nids[i] for i in false_pos]
+    print(f"SR precision: {len(true_pos)/len(pred1_coords)}")
+
+    pred2_nodes = read_nodes(pred2)
+    pred2_coords = [n['coord'] for n in pred2_nodes]
+    pred2_nodes = {n['nid']: n for n in pred2_nodes}
+    pred2_nids = list(pred2_nodes.keys())
+    pred2_tree  = KDTree(np.array(pred2_coords))
+
+    distances, _ = pred2_tree.query(np.array(gt_coords))
+    recalled = np.where(distances <= 4)[0]
+    false_negative = np.where(distances > 4)[0]
+    print(f"Baseline recall: {len(recalled)/len(gt_coords)}")
+
+
+    distances, _ = gt_tree.query(np.array(pred2_coords))
+    true_pos = np.where(distances <= 4)[0]
+    false_pos = np.where(distances > 4)[0]
+    true_pos = [pred2_nids[i] for i in true_pos]
+    false_pos = [pred2_nids[i] for i in false_pos]
+    print(f"Baseline precision: {len(true_pos)/len(pred2_coords)}")
+
+
+    # nodes = read_nodes(pred1)
+    # nodes = {n['nid']: n for n in nodes}
+    # edges = [[e['src'],e['des'],e['creator']] for e in pred1_edges]
+    # edges = [edge for edge in edges if edge[0]<edge[1]]
+    # vectors = []
+    # v_colors = []
+
+    # for edge in edges:
+    #     [src,tar,creator] = [nodes[edge[0]]['coord'],nodes[edge[1]]['coord'],edge[2]]
+    #     v = [j-i for i,j in zip(src,tar)]
+    #     p = src
+    #     vectors.append([p,v])
+    #     if edge[0] in margin or edge[1] in margin:
+    #         v_colors.append('red')
+    #     else:
+    #         v_colors.append('orange')
+    
+
+    # viewer = napari.Viewer(ndisplay=3)
+    # viewer.add_vectors(vectors,edge_color=v_colors,edge_width=2,vector_style='line')
+    # napari.run()
+
+
+
+def segs_as_paths(db_path):
+    '''
+    Analyse connectivity, extract connected components
+    Extract branch points, visualize them as points
+    Extract paths between branch points, visualize them as shape (paths)
+    '''
+    pass
 
 
 if __name__ == '__main__':
+    # colorize edges by creators
+    '''
     from ntools.image_reader import wrap_image
-    db_path = '/Users/bean/workspace/data/RM009_arbor_1.db'
-    image_path = '/Users/bean/workspace/data/RM009_arbor_1.tif'
+    db_path = '/home/bean/workspace/data/RM009_arbor_1.db'
+    image_path = '/home/bean/workspace/data/RM009_arbor_1.tif'
     color_dict = {
         'tester': 'red',
         'seger': 'yellow',
@@ -87,4 +174,11 @@ if __name__ == '__main__':
     viewer.add_image(img)
     vis_edges_by_creator(viewer,db_path,color_dict)
     napari.run()
+    '''
 
+    '''
+    gt_path = '/home/bean/workspace/data/RM009_axons_2.db'
+    pred1_path = '/home/bean/workspace/data/RM009_axons_2_sr.db'
+    pred2_path = '/home/bean/workspace/data/RM009_axons_2_baseline.db'
+    compare(gt_path,pred1_path,pred2_path)
+    '''

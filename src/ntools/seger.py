@@ -16,6 +16,7 @@ from tqdm import tqdm
 from ntools.patch import patchify_without_splices, get_patch_rois
 from ntools.dbio import segs2db
 from ntools.image_reader import wrap_image
+from ntools.deconv import Deconver
 from ntools.vis import show_segs_as_instances
 
 
@@ -201,7 +202,7 @@ class Seger():
             return np.zeros_like(img)
 
 
-    def get_large_mask(self,img):
+    def get_large_mask(self,img,dec=None):
         '''
         process one large cube (D,W,H>100) with border (default 14), return mask
         '''
@@ -247,6 +248,8 @@ class Seger():
                     pad_widths[i] = (p1,p2+res)
 
             padded_block = np.pad(block, pad_widths, mode='reflect')
+            if dec is not None:
+                padded_block = dec.process_one(padded_block)
 
             mask = self.get_mask(padded_block,thres=0.5)
             mask = mask.astype(np.uint8)
@@ -373,9 +376,7 @@ class Seger():
             roi[:3] = [i-self.bw for i in roi[:3]]
             roi[3:] = [i+self.bw*2 for i in roi[3:]]
             padded_block = image.from_roi(roi,padding='reflect')
-            if dec!=None:
-                padded_block = dec.process_img(padded_block)
-            mask = self.get_large_mask(padded_block)
+            mask = self.get_large_mask(padded_block,dec)
             _, segs_in_block = self.mask_to_segs(mask,offset=[i+self.bw for i in roi[:3]])
             segs+=segs_in_block
         
@@ -394,6 +395,7 @@ def command_line_interface():
     parser.add_argument('-roi', type=int, nargs='+', default=None, help="image roi, if kept None, process the whole image")
     parser.add_argument('-l_clip', type=int, default=None, help="value to clip voxel values, use this to repress bright noise")
     parser.add_argument('-vis', action='store_true', default=False, help="whether to visualize result after segmentation")
+    parser.add_argument('-dec_weight', type=str, default=None, help="path to the weight of deconvolution model")
     args = parser.parse_args()
     if args.weight_path is None:
         args.weight_path = os.path.join(package_dir,'universal_tiny.pth')
@@ -402,7 +404,11 @@ def command_line_interface():
     print(f"Processing image: {args.image_path}, roi: {args.roi}")
 
     seger = Seger(args.weight_path,l_clip=args.l_clip,bg_thres=150) # bg_thres is used to filter out empty image like image borders
-    segs = seger.process_whole(args.image_path, roi=args.roi)
+    if args.dec_weight is not None:
+        deconver = Deconver(args.dec_weight)
+    else:
+        deconver = None
+    segs = seger.process_whole(args.image_path, roi=args.roi, dec=deconver)
 
     if args.db_path is not None:
         print(f"Saving {len(segs)} segs to {args.db_path}")

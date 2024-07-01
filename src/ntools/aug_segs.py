@@ -108,7 +108,7 @@ def gen_dataset(source_dir, out_dir, n_fg, n_bg):
         patch_coords = get_patch_coords([0,0,0]+size,block_size)
         for [x,y,z] in patch_coords:
             block = image[x:x+block_size,y:y+block_size,z:z+block_size]
-            blocks.append(block)
+            blocks.append(block.astype(np.uint16))
 
     num = 1
     random.shuffle(blocks)
