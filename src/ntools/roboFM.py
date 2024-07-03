@@ -193,8 +193,8 @@ if __name__ == '__main__':
     import networkx as nx
     from ntools.image_reader import wrap_image
     from ntools.dbio import read_nodes, read_edges, get_edges_by
-    img_path = '/home/bean/workspace/data/RM009_axons_1.tif'
-    db_path = '/home/bean/workspace/data/RM009_axons_1.db'
+    img_path = '/Users/bean/workspace/data/RM009_axons_1.tif'
+    db_path = '/Users/bean/workspace/data/RM009_axons_1.db'
     image = wrap_image(img_path)
     nodes = read_nodes(db_path)
     edges = read_edges(db_path)

@@ -36,6 +36,32 @@ def show_segs_as_instances(segs,viewer,size=0.8):
     point_layer = viewer.add_points(np.array(points),ndim=3,face_color='colors',size=size,edge_color='colors',shading='spherical',edge_width=0,properties=properties,face_colormap='turbo')
 
 
+def show_segs_as_paths(segs,viewer,size=0.8):
+    '''
+    segs: [
+        [[x,y,z],[x,y,z],...],
+        ...
+    ]
+    '''
+    paths = []
+    colors = []
+    num_segs = 0
+    num_branches = 0
+    for seg in segs:
+        seg_color = random.random()
+        paths.append(np.array(seg))
+        colors.append(seg_color)
+
+    colors = (colors-np.min(colors))/(np.max(colors)-np.min(colors))
+    properties = {
+        'colors': colors
+    }
+
+    path_layer = viewer.add_shapes(
+        paths, properties=properties, shape_type='path', edge_width=1, edge_color='colors', edge_colormap='turbo', blending='opaque'
+    )
+
+
 
 def vis_edges_by_creator(viewer,db_path,color_dict):
     '''
@@ -176,9 +202,19 @@ if __name__ == '__main__':
     napari.run()
     '''
 
+    # compair results with ground truth
     '''
     gt_path = '/home/bean/workspace/data/RM009_axons_2.db'
     pred1_path = '/home/bean/workspace/data/RM009_axons_2_sr.db'
     pred2_path = '/home/bean/workspace/data/RM009_axons_2_baseline.db'
     compare(gt_path,pred1_path,pred2_path)
     '''
+
+    # visualize segs as paths
+    from ntools.neurites import Neurites
+    gt_path = '/Users/bean/workspace/data/RM009_axons_1.db'
+    neurites = Neurites(gt_path)
+    segs,_ = neurites.get_segs_within(roi=[0,0,0,1000,1000,1000])
+    viewer = napari.Viewer(ndisplay=3)
+    show_segs_as_paths(segs,viewer)
+    napari.run()

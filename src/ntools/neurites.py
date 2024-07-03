@@ -69,13 +69,15 @@ class Neurites():
             path = [[i-j for i,j in zip(self.G.nodes[node]['coord'],roi[0:3])] for node in path]
             segs.append(path)
         # get intensity value
-        img = self.image.from_roi(roi)
+
         intens = []
-        for seg in segs:
-            seg_intens = []
-            for coord in seg:
-                seg_intens.append(img[coord[0],coord[1],coord[2]])
-            intens.append(seg_intens)
+        if self.image is not None:
+            img = self.image.from_roi(roi)
+            for seg in segs:
+                seg_intens = []
+                for coord in seg:
+                    seg_intens.append(img[coord[0],coord[1],coord[2]])
+                intens.append(seg_intens)
 
         return segs, intens
 
@@ -84,7 +86,10 @@ class Neurites():
         connected_components = list(nx.connected_components(self.G))
 
 
+
 if __name__ == '__main__':
+    # visualize segs within given roi
+    '''
     db_path = '/Users/bean/workspace/data/RM009_axons_1.db'
     image_path = '/Users/bean/workspace/data/RM009_axons_1.tif'
     neurites = Neurites(db_path,image_path=image_path)
@@ -98,3 +103,4 @@ if __name__ == '__main__':
     segs = sum(segs,[])
     viewer.add_points(np.array(segs),size=2)
     napari.run()
+    '''
