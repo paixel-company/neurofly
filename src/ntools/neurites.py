@@ -86,6 +86,10 @@ class Neurites():
         connected_components = list(nx.connected_components(self.G))
 
 
+    def get_segs(self,len_thres=100):
+        pass
+
+
 
 if __name__ == '__main__':
     # visualize segs within given roi

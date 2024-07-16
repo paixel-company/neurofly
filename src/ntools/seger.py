@@ -11,16 +11,16 @@ from tqdm import tqdm
 from ntools.patch import patchify_without_splices, get_patch_rois
 from ntools.dbio import segs2db
 from ntools.image_reader import wrap_image
-from ntools.deconv import Deconver
-from ntools.vis import show_segs_as_instances
+from ntools.models.deconv import Deconver
+from ntools.vis import show_segs_as_paths
 
 
 class Seger():
     def __init__(self,ckpt_path,bg_thres,l_clip=None,device=None):
         if sys.platform == 'darwin':
-            from ntools.unet_tinygrad import SegNet
+            from ntools.models.unet_tinygrad import SegNet
         else:
-            from ntools.unet_torch import SegNet
+            from ntools.models.unet_torch import SegNet
         self.seg_net = SegNet(ckpt_path,l_clip,bg_thres)
         self.bw = 14 #border width (128-100)//2
 
@@ -102,27 +102,14 @@ class Seger():
             sid: int,
             points: [head,...,tail],
             sampled_points: points[::interval]
-            nbrs = [[index_of_point,sid],...],
         }
         '''
 
         interval = 3
-        # remove border
-        # border_size = [0,0,3]
-        # if border_size>0:
-        #     mask[:border_size[0], :, :] = 0
-        #     mask[-border_size[0]:, :, :] = 0
-
-        #     mask[:, :border_size[1], :] = 0
-        #     mask[:, -border_size[1]:, :] = 0
-
-        #     mask[:, :, :border_size[2]] = 0
-        #     mask[:, :, -border_size[2]:] = 0
 
         x_border = 3
         y_border = 3
         z_border = 3
-
 
         skel = skeletonize(mask)
         skel[:, :, :x_border] = 0
@@ -142,9 +129,11 @@ class Seger():
             adjacency_matrix = distances <= 1.8 # sqrt(3)
             np.fill_diagonal(adjacency_matrix, 0)
             graph = nx.from_numpy_array(adjacency_matrix.astype(np.uint8))
-            # keep only DFS tree
             spanning_tree = nx.minimum_spanning_tree(graph, algorithm='kruskal', weight=None)
+            # remove circles by keeping only DFS tree
             graph.remove_edges_from(set(graph.edges) - set(spanning_tree.edges))
+            # remove all the 
+
             branch_nodes = [node for node, degree in graph.degree() if degree >= 3]
             branch_nbrs = []
             for node in branch_nodes:
@@ -199,20 +188,23 @@ class Seger():
             image_roi = image.roi
         else:
             image_roi = roi
-        offset = image_roi[0:3]
-        bounds = [i+j for i,j in zip(offset,image_roi[3:])]
         rois = patchify_without_splices(image_roi,[300,300,300])
         # pad rois
         segs = []
         for roi in tqdm(rois):
-            roi[:3] = [i-self.bw for i in roi[:3]]
-            roi[3:] = [i+self.bw*2 for i in roi[3:]]
-            padded_block = image.from_roi(roi,padding='reflect')
-            mask = self.get_large_mask(padded_block,dec)
-            _, segs_in_block = self.mask_to_segs(mask,offset=[i+self.bw for i in roi[:3]])
+            if roi[3:]==[128,128,128]:
+                mask = self.seg_net.get_mask(image.from_roi(roi))
+                offset = roi[:3]
+            else:
+                roi[:3] = [i-self.bw for i in roi[:3]]
+                roi[3:] = [i+self.bw*2 for i in roi[3:]]
+                padded_block = image.from_roi(roi,padding='reflect')
+                mask = self.get_large_mask(padded_block,dec)
+                offset=[i+self.bw for i in roi[:3]]
+            _, segs_in_block = self.mask_to_segs(mask,offset=offset)
             segs+=segs_in_block
         
-        for i,seg in enumerate(segs):
+        for i, seg in enumerate(segs):
             seg['sid'] = i
 
         return segs
@@ -230,7 +222,7 @@ def command_line_interface():
     parser.add_argument('-dec_weight', type=str, default=None, help="path to the weight of deconvolution model")
     args = parser.parse_args()
     if args.weight_path is None:
-        args.weight_path = os.path.join(package_dir,'universal_tiny.pth')
+        args.weight_path = os.path.join(package_dir,'models/universal_tiny.pth')
 
     print(f"Using weight: {args.weight_path}")
     print(f"Processing image: {args.image_path}, roi: {args.roi}")
@@ -240,6 +232,7 @@ def command_line_interface():
         deconver = Deconver(args.dec_weight)
     else:
         deconver = None
+
     segs = seger.process_whole(args.image_path, roi=args.roi, dec=deconver)
 
     if args.db_path is not None:
@@ -262,7 +255,7 @@ def command_line_interface():
         seg_points = []
         for seg in segs:
             seg_points.append(seg['sampled_points'])
-        show_segs_as_instances(seg_points, viewer, size=2)
+        show_segs_as_paths(seg_points, viewer, width=0.2)
         napari.run()
 
 

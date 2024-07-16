@@ -12,4 +12,5 @@ build
 __pythran__/
 .coverage
 tests/
+test/
 src/weights/

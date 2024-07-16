@@ -3,7 +3,7 @@ from magicgui import widgets
 from ntools.image_reader import wrap_image
 from scipy.spatial import KDTree
 from napari.utils.notifications import show_info
-from ntools.deconv import Deconver
+from ntools.models.deconv import Deconver
 import numpy as np
 import networkx as nx
 import napari
@@ -70,8 +70,8 @@ class Annotator:
 
         # ----- widgets -----
         self.user_name = widgets.LineEdit(label="user name", value='tester')
-        self.image_path = widgets.FileEdit(label="image path")
-        self.db_path = widgets.FileEdit(label="database path")
+        self.image_path = widgets.FileEdit(label="image path", mode='r')
+        self.db_path = widgets.FileEdit(label="database path",filter='*.db')
         self.deconv_path = widgets.FileEdit(label="Deconv model weight")
         self.image_switch = widgets.CheckBox(value=False,text='show panorama image')
         self.segs_switch = widgets.CheckBox(value=True,text='show/hide long segments')

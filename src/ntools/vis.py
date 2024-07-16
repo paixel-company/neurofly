@@ -1,8 +1,10 @@
 import napari
 import numpy as np
 import random
+import networkx as nx
 from ntools.dbio import read_nodes,read_edges
 from scipy.spatial import KDTree
+
 
 def show_segs_as_instances(segs,viewer,size=0.8):
     '''
@@ -36,7 +38,8 @@ def show_segs_as_instances(segs,viewer,size=0.8):
     point_layer = viewer.add_points(np.array(points),ndim=3,face_color='colors',size=size,edge_color='colors',shading='spherical',edge_width=0,properties=properties,face_colormap='turbo')
 
 
-def show_segs_as_paths(segs,viewer,size=0.8):
+
+def show_segs_as_paths(segs,viewer,width=1):
     '''
     segs: [
         [[x,y,z],[x,y,z],...],
@@ -47,10 +50,17 @@ def show_segs_as_paths(segs,viewer,size=0.8):
     colors = []
     num_segs = 0
     num_branches = 0
+    length = 0
     for seg in segs:
         seg_color = random.random()
-        paths.append(np.array(seg))
-        colors.append(seg_color)
+        if len(seg)>=2:
+            num_segs+=1
+            paths.append(np.array(seg))
+            colors.append(seg_color)
+            length+=len(seg)*3
+        if len(seg)==1:
+            num_branches+=1
+        length+=9
 
     colors = (colors-np.min(colors))/(np.max(colors)-np.min(colors))
     properties = {
@@ -58,7 +68,66 @@ def show_segs_as_paths(segs,viewer,size=0.8):
     }
 
     path_layer = viewer.add_shapes(
-        paths, properties=properties, shape_type='path', edge_width=1, edge_color='colors', edge_colormap='turbo', blending='opaque'
+        paths, properties=properties, shape_type='path', edge_width=width, edge_color='colors', edge_colormap='turbo', blending='opaque'
+    )
+    print(f'num of segs (length >= 2): {num_segs}')
+    print(f'num of branch points: {num_branches}')
+    print(f'num of points: {length}')
+
+
+
+def show_graph_as_paths(neurites,viewer,len_thres=10):
+    segs = []
+    seg_colors = []
+    nodes = []
+    node_colors = []
+    G = neurites.G
+    connected_components = list(nx.connected_components(G))
+
+    for cc in connected_components:
+        # extract segs and branch nodes, assign same color
+        if len(cc)<=len_thres:
+            continue
+        sub_g = G.subgraph(cc).copy()
+        color = random.random()
+        spanning_tree = nx.minimum_spanning_tree(sub_g, algorithm='kruskal', weight=None)
+        # remove circles by keeping only DFS tree
+        sub_g.remove_edges_from(set(sub_g.edges) - set(spanning_tree.edges))
+        branch_nodes = [node for node, degree in sub_g.degree() if degree >= 3]
+        nodes += [G.nodes[i]['coord'] for i in branch_nodes]
+        node_colors += [color]*len(branch_nodes)
+        sub_g.remove_nodes_from(branch_nodes)
+
+        cc = list(nx.connected_components(sub_g))
+        for ns in cc:
+            sub_sub_g = sub_g.subgraph(ns)
+            end_nodes = [node for node, degree in sub_sub_g.degree() if degree == 1]
+            if (len(end_nodes)!=2):
+                continue
+            path = nx.shortest_path(sub_sub_g, source=end_nodes[0], target=end_nodes[1], weight=None, method='dijkstra') 
+            seg_points = [G.nodes[i]['coord'] for i in path]
+            # add branch points back
+            source_nbrs = list(G.neighbors(end_nodes[0]))
+            branch_node = list(set(source_nbrs)-set(path))
+            if len(branch_node)==1:
+                seg_points.insert(0,G.nodes[branch_node[0]]['coord'])
+
+            target_nbrs = list(G.neighbors(end_nodes[1]))
+            branch_node = list(set(target_nbrs)-set(path))
+            if len(branch_node)==1:
+                seg_points.append(G.nodes[branch_node[0]]['coord'])
+
+            seg_colors.append(color)
+            segs.append(seg_points)
+
+
+    seg_colors = (seg_colors-np.min(seg_colors))/(np.max(seg_colors)-np.min(seg_colors))
+    properties = {
+        'colors': seg_colors
+    }
+
+    path_layer = viewer.add_shapes(
+        segs, properties=properties, shape_type='path', edge_width=1, edge_color='colors', edge_colormap='turbo', blending='opaque'
     )
 
 
@@ -80,6 +149,8 @@ def vis_edges_by_creator(viewer,db_path,color_dict):
     edges = [[e['src'],e['des'],e['creator']] for e in edges]
     edges = [edge for edge in edges if edge[0]<edge[1]]
 
+    edge_length = {key:0 for key,_ in color_dict.items()}
+
     vectors = []
     v_colors = []
     for edge in edges:
@@ -89,9 +160,13 @@ def vis_edges_by_creator(viewer,db_path,color_dict):
         vectors.append([p,v])
         if creator in color_dict.keys():
             v_colors.append(color_dict[creator])
+            edge_length[creator]+=1
         else:
             v_colors.append(color_dict['default'])
+            edge_length[creator]+=1 
+
     
+    print(edge_length)
     viewer.add_vectors(vectors,edge_color=v_colors,edge_width=2,vector_style='line')
 
 
@@ -173,21 +248,13 @@ def compare(gt,pred1,pred2=None):
 
 
 
-def segs_as_paths(db_path):
-    '''
-    Analyse connectivity, extract connected components
-    Extract branch points, visualize them as points
-    Extract paths between branch points, visualize them as shape (paths)
-    '''
-    pass
-
-
 if __name__ == '__main__':
     # colorize edges by creators
     '''
     from ntools.image_reader import wrap_image
-    db_path = '/home/bean/workspace/data/RM009_arbor_1.db'
-    image_path = '/home/bean/workspace/data/RM009_arbor_1.tif'
+    db_path = 'test/z002_interped.db'
+    image_path = 'test/z002_level4.tif'
+    image = wrap_image(image_path)
     color_dict = {
         'tester': 'red',
         'seger': 'yellow',
@@ -195,9 +262,7 @@ if __name__ == '__main__':
         'default': 'white'
     }
     viewer = napari.Viewer(ndisplay=3)
-    image = wrap_image(image_path)
-    img = image.from_roi(image.roi)
-    viewer.add_image(img)
+    viewer.add_image(image.from_roi(image.roi),scale=[16,16,16])
     vis_edges_by_creator(viewer,db_path,color_dict)
     napari.run()
     '''
@@ -211,10 +276,12 @@ if __name__ == '__main__':
     '''
 
     # visualize segs as paths
+    # '''
     from ntools.neurites import Neurites
-    gt_path = '/Users/bean/workspace/data/RM009_axons_1.db'
-    neurites = Neurites(gt_path)
-    segs,_ = neurites.get_segs_within(roi=[0,0,0,1000,1000,1000])
+    db_path = '/Users/bean/workspace/data/RM009_arbor_1.db'
+    # db_path = 'test/z002_final.db'
+    neurites = Neurites(db_path)
     viewer = napari.Viewer(ndisplay=3)
-    show_segs_as_paths(segs,viewer)
+    show_graph_as_paths(neurites,viewer)
     napari.run()
+    # '''

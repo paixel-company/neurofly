@@ -174,7 +174,7 @@ if __name__ == "__main__":
     ckpt_path = 'src/ntools/universal_tiny.pth'
     segnet = SegNet(ckpt_path)
     from tifffile import imread, imwrite
-    path = '/Users/bean/workspace/data/skels/img_1.tif'
+    path = '/Users/bean/workspace/data/rm009/img_1.tif'
     img = imread(path)
     mask = segnet.get_mask(img)
 
