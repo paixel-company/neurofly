@@ -1,9 +1,10 @@
 import networkx as nx
 import numpy as np
 from scipy.spatial import KDTree
-from ntools.dbio import read_edges, read_nodes, delete_nodes, add_nodes, add_edges, check_node, uncheck_nodes, change_type
-from magicgui import magicgui, widgets
+from ntools.dbio import read_edges, read_nodes
 from ntools.image_reader import wrap_image
+from rtree import index
+from tqdm import tqdm
 
 
 class Neurites():
@@ -26,13 +27,20 @@ class Neurites():
         for edge in edges:
             self.G.add_edge(edge['src'],edge['des'],creator = edge['creator'])
 
+
+        p = index.Property(dimension=3)
+        rtree_idx = index.Index(properties=p)
+
         coords = []
         coord_ids = []
-        for node in nodes:
+        print("loading nodes")
+        for node in tqdm(nodes):
             coords.append(node['coord'])
             coord_ids.append(node['nid'])
+            rtree_idx.insert(node['nid'], tuple(node['coord']+node['coord']), obj=node)
         self.kdtree = KDTree(np.array(coords))
         self.coord_ids = coord_ids
+        self.rtree = rtree_idx
 
     
     def get_pn_links(self,k,dis_thres):
@@ -52,10 +60,8 @@ class Neurites():
         # 2. generate subgraph
         # 3. remove branches, then traverse every connected components
         # 4. filter out short paths
-        assert roi[3]==roi[4] and roi[4]==roi[5] # process cubic image block
-        c_coord = [i+j//2-1 for i,j in zip(roi[0:3],roi[3:6])]
-        nbrs = self.kdtree.query_ball_point(c_coord, roi[3]/2, p=float(np.inf))
-        nbrs = [self.coord_ids[i] for i in nbrs]
+
+        nbrs = list(self.rtree.intersection(tuple(roi[0:3]+[i+j for i,j in zip(roi[:3],roi[3:])]), objects=False))
         sub_g = self.G.subgraph(nbrs).copy()
         branch_nodes = [node for node, degree in sub_g.degree() if degree >= 3]
         sub_g.remove_nodes_from(branch_nodes) 

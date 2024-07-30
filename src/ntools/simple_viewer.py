@@ -9,7 +9,7 @@ from tifffile import imwrite
 
 class SimpleViewer:
     def __init__(self):
-        self.viewer = napari.Viewer(ndisplay=3,title='instance annotator')
+        self.viewer = napari.Viewer(ndisplay=3,title='simple viewer')
         self.image_layer = self.viewer.add_image(np.zeros((64, 64, 64), dtype=np.uint16),name='image')
         self.goal_layer = self.viewer.add_points(ndim=3,face_color='red',size=2,edge_color='black',shading='spherical',name='goal')
         self.add_callback()

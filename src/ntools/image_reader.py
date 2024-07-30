@@ -253,4 +253,3 @@ if __name__ == '__main__':
     viewer = napari.Viewer(ndisplay=3)
     viewer.add_image(img)
     napari.run()
- 

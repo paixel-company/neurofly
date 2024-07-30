@@ -1,14 +1,14 @@
-from ntools.dbio import read_edges, read_nodes, delete_nodes, add_nodes, add_edges, check_node, uncheck_nodes, change_type
+from ntools.dbio import read_edges, read_nodes, add_nodes, add_edges, check_node, uncheck_nodes, change_type, delete_nodes
 from magicgui import widgets
 from ntools.image_reader import wrap_image
-from scipy.spatial import KDTree
 from napari.utils.notifications import show_info
 from ntools.models.deconv import Deconver
+from rtree import index
+from tqdm import tqdm
 import numpy as np
 import networkx as nx
 import napari
 import random
-
 
 # use PushButton itself as a recorder
 class PushButton(widgets.PushButton):
@@ -19,7 +19,7 @@ class PushButton(widgets.PushButton):
 class Annotator:
     def __init__(self):
         # --------- GUI ---------
-        self.viewer = napari.Viewer(ndisplay=3)
+        self.viewer = napari.Viewer(ndisplay=3, title='Segs Annotator')
         # panorama mode
         self.panorama_image = self.viewer.add_image(np.ones((64, 64, 64), dtype=np.uint16), name='panorama image',visible=False)
         self.panorama_points = self.viewer.add_points(None,ndim=3,size=None,shading='spherical',edge_width=0,properties=None,face_colormap='hsl',name='panorama view',blending='additive',visible=True)
@@ -35,8 +35,8 @@ class Annotator:
         # --------- data structure ---------
         self.image = None
         self.G = None # networkx graph
-        self.kdtree = None
-        self.coord_ids = None # kdtree indices to node indices
+        p = index.Property(dimension=3)
+        self.rtree = index.Index(properties=p)
         self.connected_nodes = []
         self.delected_nodes = {
             'nodes': [],
@@ -70,6 +70,7 @@ class Annotator:
 
         # ----- widgets -----
         self.user_name = widgets.LineEdit(label="user name", value='tester')
+        self.image_type = widgets.CheckBox(value=False,text='read zarr format')
         self.image_path = widgets.FileEdit(label="image path", mode='r')
         self.db_path = widgets.FileEdit(label="database path",filter='*.db')
         self.deconv_path = widgets.FileEdit(label="Deconv model weight")
@@ -80,7 +81,7 @@ class Annotator:
         self.min_length = widgets.Slider(label="min_length", value=10, min=0, max=200)
         self.len_thres = widgets.Slider(label="length thres", value=20, min=0, max=9999)
         self.min_size = widgets.Slider(label="min size", value=3, min=0, max=10)
-        self.max_size = widgets.Slider(label="max size", value=10, min=1, max=20)
+        self.max_size = widgets.Slider(label="max size", value=5, min=1, max=20)
         self.mode_switch = PushButton(text="switch mode (q)")
         self.mode_switch.mode = 'panorama'
         self.selected_node = widgets.LineEdit(label="node selection", value=0)
@@ -100,6 +101,8 @@ class Annotator:
         # ---------------------------
 
         # ----- widgets bindings -----
+        self.image_type.changed.connect(self.switch_image_type)
+        self.proofreading_switch.changed.connect(self.on_proofreading_mode_change)
         self.submit_button.clicked.connect(self.submit_result)
         self.refresh_panorama_button.clicked.connect(self.refresh_panorama)
         self.mode_switch.clicked.connect(self.switch_mode)
@@ -115,6 +118,7 @@ class Annotator:
 
         self.container = widgets.Container(widgets=[
             self.user_name,
+            self.image_type,
             self.image_path,
             self.db_path,
             self.deconv_path,
@@ -142,6 +146,17 @@ class Annotator:
 
         self.viewer.window.add_dock_widget(self.container, area='right')
     
+
+
+    def on_proofreading_mode_change(self,event):
+        self.refresh(self.viewer,keep_image=True)
+    
+
+    def switch_image_type(self,event):
+        if event:
+            self.image_path.mode = 'd'
+        else:
+            self.image_path.mode = 'r'
 
 
     def load_deconver(self):
@@ -212,34 +227,45 @@ class Annotator:
 
     def connect_one_nearest(self,viewer):
         # find one closest neighbour point, add it to self.connected_nodes
-        if len(self.delected_nodes['nodes'])>0 or len(self.added_nodes)>0:
-            show_info('Do not use this if you have added or deleted nodes')
-            return
+        # if len(self.delected_nodes['nodes'])>0 or len(self.added_nodes)>0:
+        #     show_info('Do not use this if you have added or deleted nodes')
+        #     return
         selection = int(self.selected_node.value)
         c_coord = self.G.nodes[selection]['coord']
-        d, nbrs = self.kdtree.query(c_coord, self.image_size.value//2, p=float(np.inf))
-        nbrs = [self.coord_ids[i] for i in nbrs]
+
+        h_size = self.image_size.value//2
+        query_box = (c_coord[0]-h_size,c_coord[1]-h_size,c_coord[2]-h_size,c_coord[0]+h_size,c_coord[1]+h_size,c_coord[2]+h_size)
+        nbrs = list(self.rtree.intersection(query_box, objects=False))
+
         cc = list(nx.node_connected_component(self.G,selection))
         nbrs = [i for i in nbrs if i not in cc]
         if len(nbrs)>0:
-            self.connected_nodes = [nbrs[0]]
+            nbr_coords = np.array([self.G.nodes[nid]['coord'] for nid in nbrs])
+            distances = np.linalg.norm(nbr_coords - np.array(c_coord), axis=1)
+            closest_indices = [nbrs[i] for i in np.argsort(distances)[:1]]
+            self.connected_nodes = closest_indices
         self.refresh_edge_layer()
         self.refresh(self.viewer)
 
 
     def connect_two_nearest(self,viewer):
         # find one closest neighbour point, add it to self.connected_nodes
-        if len(self.delected_nodes['nodes'])>0 or len(self.added_nodes)>0:
-            show_info('Do not use this if you have added or deleted nodes')
-            return
+        # if len(self.delected_nodes['nodes'])>0 or len(self.added_nodes)>0:
+        #     show_info('Do not use this if you have added or deleted nodes')
+        #     return
         selection = int(self.selected_node.value)
         c_coord = self.G.nodes[selection]['coord']
-        d, nbrs = self.kdtree.query(c_coord, self.image_size.value//2, p=float(np.inf))
-        nbrs = [self.coord_ids[i] for i in nbrs]
+        h_size = self.image_size.value//2
+        query_box = (c_coord[0]-h_size,c_coord[1]-h_size,c_coord[2]-h_size,c_coord[0]+h_size,c_coord[1]+h_size,c_coord[2]+h_size)
+        nbrs = list(self.rtree.intersection(query_box, objects=False))
         cc = nx.node_connected_component(self.G,selection)
         nbrs = [i for i in nbrs if i not in cc]
         if len(nbrs)>1:
-            self.connected_nodes = nbrs[:2]
+            # sort nbr according to distance
+            nbr_coords = np.array([self.G.nodes[nid]['coord'] for nid in nbrs])
+            distances = np.linalg.norm(nbr_coords - np.array(c_coord), axis=1)
+            closest_indices = [nbrs[i] for i in np.argsort(distances)[:2]]
+            self.connected_nodes = closest_indices
         self.refresh_edge_layer()
         self.refresh(self.viewer)
 
@@ -302,7 +328,7 @@ class Annotator:
         # update canvas according to center and size
         # it only needs one node id to generate one task
         # 1. choose one unchecked node from CC as center node
-        # 2. query neighbour nodes from kdtree
+        # 2. query nodes in roi from rtree
         # 3. assign properties for nodes to identify different segments and center point, add existing edges to vector layer
         # 4. load image
 
@@ -327,8 +353,11 @@ class Annotator:
             selection = unchecked_nodes[0]
             self.selected_node.value = str(selection)
             c_coord = self.G.nodes[selection]['coord']
-            nbrs = self.kdtree.query_ball_point(c_coord, self.image_size.value//2, p=float(np.inf))
-            nbrs = [self.coord_ids[i] for i in nbrs]
+
+            h_size = self.image_size.value//2
+            query_box = (c_coord[0]-h_size,c_coord[1]-h_size,c_coord[2]-h_size,c_coord[0]+h_size,c_coord[1]+h_size,c_coord[2]+h_size)
+            nbrs = list(self.rtree.intersection(query_box, objects=False))
+
             nbrs = nbrs + self.added_nodes
             sub_g = self.G.subgraph(nbrs)
             connected_components = list(nx.connected_components(sub_g))
@@ -363,6 +392,7 @@ class Annotator:
                     sizes.pop(-1)
                     sizes.append(4)
 
+
         for c_node in nbrs:
             if not self.G.has_node(c_node):
                 continue
@@ -374,7 +404,7 @@ class Annotator:
 
 
         colors = np.array(colors)
-        if np.max(colors) != np.min(colors):
+        if np.max(colors) != np.min(colors) and len(colors)!=0:
             colors = (colors-np.min(colors))/(np.max(colors)-np.min(colors))
 
         properties = {
@@ -419,7 +449,8 @@ class Annotator:
     def recover(self, viewer):
         # recover the preserved delected nodes if exists
         for node in self.delected_nodes['nodes']:
-            self.G.add_node(node['nid'], nid = node['nid'],coord = node['coord'], type = node['type'], checked = 0)
+            self.G.add_node(node['nid'], nid = node['nid'],coord = node['coord'], type = node['type'], checked = 0, creator = self.user_name.value)
+            self.rtree.insert(node['nid'], tuple(node['coord']+node['coord']))
         for edge in self.delected_nodes['edges']:
             self.G.add_edge(edge[0],edge[1])
 
@@ -429,6 +460,8 @@ class Annotator:
         }
 
         if len(self.added_nodes)!=0:
+            for nid in self.added_nodes:
+                self.rtree.delete(nid,tuple(self.G.nodes[nid]['coord']+self.G.nodes[nid]['coord']))
             self.G.remove_nodes_from(self.added_nodes)
         self.added_nodes = []
         self.connected_nodes = []
@@ -445,23 +478,11 @@ class Annotator:
     def update_local(self):
         # label the center node of current task as checked in self.G
         # update canvas and local graph
-        # if there's new nodes, update kdtree
         # run refresh to updata canvas
         self.delected_nodes = {
             'nodes': [],
             'edges': []
         }
-
-        coords = []
-        coord_ids = []
-        # update self.kdtree
-        if len(self.added_nodes)!=0:
-            # added_nodes already in self.G, not in self.kdtree
-            for node in list(self.G):
-                coords.append(self.G.nodes[node]['coord'])
-                coord_ids.append(self.G.nodes[node]['nid'])
-            self.kdtree = KDTree(np.array(coords))
-            self.coord_ids = coord_ids
 
         self.added_nodes = []
 
@@ -528,23 +549,18 @@ class Annotator:
             show_info('switch to panorama mode first')
             return
         if self.G is None:
-            # load graph and kdtree from database
+            # load graph and rtree from database
             nodes = read_nodes(self.db_path.value)
             edges = read_edges(self.db_path.value)
             self.G = nx.Graph()
-            for node in nodes:
-                self.G.add_node(node['nid'], nid = node['nid'],coord = node['coord'], type = node['type'], checked = node['checked'])
+            print("loading nodes")
+            for node in tqdm(nodes):
+                self.G.add_node(node['nid'], nid = node['nid'], coord = node['coord'], type = node['type'], checked = node['checked'], creator = node['creator'])
+                self.rtree.insert(node['nid'], tuple(node['coord']+node['coord']))
 
             for edge in edges:
                 self.G.add_edge(edge['src'],edge['des'],creator = edge['creator'])
 
-            coords = []
-            coord_ids = []
-            for i,node in enumerate(nodes):
-                coords.append(node['coord'])
-                coord_ids.append(node['nid'])
-            self.kdtree = KDTree(np.array(coords))
-            self.coord_ids = coord_ids
             # read image
             self.image = wrap_image(str(self.image_path.value))
         
@@ -598,6 +614,9 @@ class Annotator:
                 colors.append(color)
                 sizes.append(len(nodes))
 
+        if len(sizes)==0:
+            show_info("No segment in range")
+            return
 
         colors = np.array(colors)
         colors = (colors-np.min(colors))/(np.max(colors)-np.min(colors))
@@ -644,9 +663,10 @@ class Annotator:
         # this is appended to panorama_points layer
         if event.button == 2:
             # remove all connected points
+            position, direction = self.map_click(event)
             index = layer.get_value(
-                event.position,
-                view_direction=event.view_direction,
+                position,
+                view_direction = direction,
                 dims_displayed=event.dims_displayed,
                 world=True,
             )
@@ -680,9 +700,10 @@ class Annotator:
         
         One operation contains (click type, mode, modifier)
         '''
+        position, direction = self.map_click(event)
         index = layer.get_value(
-            event.position,
-            view_direction=event.view_direction,
+            position,
+            view_direction = direction,
             dims_displayed=event.dims_displayed,
             world=True,
         )
@@ -723,7 +744,17 @@ class Annotator:
             case (2, 'labeling', None): # remove node and its edges
                 current_cc = nx.node_connected_component(self.G, int(self.selected_node.value))
                 if len(current_cc)==1:
-                    show_info("Can't remove the last node, switch center node before doing so.")
+                    if node_id in self.added_nodes:
+                        self.added_nodes.remove(node_id)
+                    else:
+                        self.delected_nodes['nodes'].append(self.G.nodes[node_id])
+
+                    self.rtree.delete(node_id,tuple(self.G.nodes[node_id]['coord']+self.G.nodes[node_id]['coord']))
+                    self.G.remove_node(node_id)
+                    if node_id in self.connected_nodes:
+                        self.connected_nodes.remove(node_id)
+
+                    self.get_next_task(self.viewer)
                     return
                 if node_id not in current_cc:
                     # preserve the delected node, until next submit
@@ -736,6 +767,7 @@ class Annotator:
                         # after removing, label its neighbors as unchecked
                         self.G.nodes[nbr]['checked'] = 0
 
+                    self.rtree.delete(node_id,tuple(self.G.nodes[node_id]['coord']+self.G.nodes[node_id]['coord']))
                     self.G.remove_node(node_id)
 
                     if node_id in self.connected_nodes:
@@ -753,6 +785,7 @@ class Annotator:
                     for nbr in nbrs:
                         self.delected_nodes['edges'].append([node_id,nbr])
                         self.G.nodes[nbr]['checked'] = 0
+                    self.rtree.delete(node_id,tuple(self.G.nodes[node_id]['coord']+self.G.nodes[node_id]['coord']))
                     self.G.remove_node(node_id)
                     if node_id in self.connected_nodes:
                         self.connected_nodes.remove(node_id)
@@ -784,9 +817,10 @@ class Annotator:
     def put_point(self,layer,event):
         # add new node to self.G and self.add_nodes
         if(event.button==2):
+            position, direction = self.map_click(event) 
             near_point, far_point = layer.get_ray_intersections(
-                event.position,
-                event.view_direction,
+                position,
+                direction,
                 event.dims_displayed
             )
             sample_ray = far_point - near_point
@@ -815,12 +849,33 @@ class Annotator:
             while self.G.has_node(new_id):
                 new_id+=1
             
-            self.G.add_node(new_id, nid = new_id, coord = max_point, type = 0, checked = 0)
+            self.G.add_node(new_id, nid = new_id, coord = max_point, type = 0, checked = 0, creator = self.user_name.value)
+            self.rtree.insert(new_id, tuple(max_point+max_point))
             self.added_nodes.append(new_id)
 
             self.refresh(self.viewer)
             self.viewer.layers.selection.active = self.image_layer
+    
 
+    def map_click(self,event):
+        x, y = event.pos
+        w, h = self.viewer.window.qt_viewer.canvas.size
+        transform = self.viewer.window.qt_viewer.view.camera._scene_transform
+
+        p0 = transform.imap([x,y,0,1]) # map click pos to scene coordinates
+        p1 = [w/2,h/2,-1e10,1] # canvas center at infinite far z- (eye position in canvas coordinates)
+        p1 = transform.imap(p1) # map eye pos to scene coordinates
+        p0 = p0[0:3]/p0[3] # homogeneous coordinate to cartesian
+        p1 = p1[0:3]/p1[3] # homogeneous coordinate to cartesian
+
+        # calculate direction of the ray
+        d = p1 - p0
+        d = d[0:3]
+        d = d / np.linalg.norm(d)
+
+        p0 = list(p0[::-1]) # xyz to zyx
+        d = list(d[::-1]) # xyz to zyx
+        return p0, d
 
 
 def main():

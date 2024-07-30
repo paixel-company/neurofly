@@ -97,7 +97,6 @@ def command_line_interface():
     parser.add_argument('-interval', type=int, default=3, help="interval of sampled")
     parser.add_argument('-dis_thres', type=int , default=6, help="minimal distance between nodes for intropolation")
     args = parser.parse_args()
-
     interp_all(args.db_path,args.image_path,args.interval,args.dis_thres)
 
 

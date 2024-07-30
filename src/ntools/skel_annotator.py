@@ -1,10 +1,9 @@
 import numpy as np
 import napari
-import json
 import os
 from brightest_path_lib.algorithm import NBAStarSearch
 from tifffile import imread, imwrite
-from magicgui import magicgui, widgets
+from magicgui import widgets
 
 
 class Annotator:
@@ -26,25 +25,22 @@ class Annotator:
         self.viewer.bind_key('d', self.delete_current_path)
         self.viewer.bind_key('s', self.save_current_path)
         self.image_layer.mouse_double_click_callbacks.append(self.on_double_click)
-        self.path_layer.mouse_drag_callbacks.append(self.get_point_under_cursor)
 
         self.button0 = widgets.PushButton(text="refresh")
         self.button0.clicked.connect(self.refresh)
-        self.button1 = widgets.PushButton(text="save json")
-        self.button1.clicked.connect(self.save_json)
-        self.button2 = widgets.PushButton(text="save path (s)")
-        self.button2.clicked.connect(self.save_current_path)
-        self.button3 = widgets.PushButton(text="delete current path (d)")
-        self.button3.clicked.connect(self.delete_current_path)
-        self.button4 = widgets.PushButton(text="delete added path (r)")
-        self.button4.clicked.connect(self.delete_one_path)
-        self.button5 = widgets.PushButton(text="find path (f)")
-        self.button5.clicked.connect(self.find_path)
-        self.button6 = widgets.PushButton(text="save mask")
-        self.button6.clicked.connect(self.save_mask)
+        self.button1 = widgets.PushButton(text="save path (s)")
+        self.button1.clicked.connect(self.save_current_path)
+        self.button2 = widgets.PushButton(text="delete current path (d)")
+        self.button2.clicked.connect(self.delete_current_path)
+        self.button3 = widgets.PushButton(text="delete added path (r)")
+        self.button3.clicked.connect(self.delete_one_path)
+        self.button4 = widgets.PushButton(text="find path (f)")
+        self.button4.clicked.connect(self.find_path)
+        self.button5 = widgets.PushButton(text="save mask")
+        self.button5.clicked.connect(self.save_mask)
 
         self.image_path = widgets.FileEdit(label="image_path")
-        self.container = widgets.Container(widgets=[self.image_path, self.button0,self.button1,self.button6,self.button2,self.button3,self.button4,self.button5])
+        self.container = widgets.Container(widgets=[self.image_path, self.button0,self.button5,self.button1,self.button2,self.button3,self.button4])
         self.viewer.window.add_dock_widget(self.container, area='right')
 
 
@@ -78,7 +74,6 @@ class Annotator:
         self.labeled_layer.refresh()
         self.start_layer.data = []
         self.goal_layer.data = []
-        # self.labeled_layer.refresh_colors()
         
 
     def delete_one_path(self,viewer):
@@ -95,8 +90,9 @@ class Annotator:
                 points.append(point)
                 colors.append(seg_color)
         
-        if colors[-1] == 0:
-            colors[-1] = 1
+        if len(colors)!=0:
+            if colors[-1] == 0:
+                colors[-1] = 1
 
         properties = {
             'colors': np.array(colors,dtype=np.float32)
@@ -111,7 +107,6 @@ class Annotator:
         self.labeled_layer.refresh()
         self.start_layer.data = []
         self.goal_layer.data = []
-        # self.labeled_layer.refresh_colors()
 
 
     def refresh(self):
@@ -143,38 +138,18 @@ class Annotator:
         self.path_layer.selected_data = np.array([])
         self.path_layer.refresh()
 
+
     def step_forward(self,viewer):
         self.start_layer.data = self.goal_layer.data
         self.goal_layer.data = []
 
 
-    def get_point_under_cursor(self, layer, event):
-        if event.button == 2:
-            index = layer.get_value(
-                event.position,
-                view_direction=event.view_direction,
-                dims_displayed=event.dims_displayed,
-                world=True,
-            )
-            if index is not None:
-                points = layer.data
-        if event.button == 1:
-            # remove nearby points
-            index = layer.get_value(
-                event.position,
-                view_direction=event.view_direction,
-                dims_displayed=event.dims_displayed,
-                world=True,
-            )
-            if index is not None:
-                points = layer.data
-
-
     def on_double_click(self,layer,event):
         #based on ray casting
+        position, direction = self.map_click(event) 
         near_point, far_point = layer.get_ray_intersections(
-            event.position,
-            event.view_direction,
+            position,
+            direction,
             event.dims_displayed
         )
         sample_ray = far_point - near_point
@@ -206,18 +181,6 @@ class Annotator:
     def clamp_point_to_bbox(self,point: np.ndarray, bbox: np.ndarray):
         clamped_point = np.clip(point, bbox[:, 0], bbox[:, 1])
         return clamped_point
-    
-
-    def save_json(self,viewer):
-        image_path = self.image_path.value
-        directory, image_name = os.path.split(image_path)
-        json_name = image_name.replace('.tif','.json')
-        json_name = json_name.replace('img','segs')
-
-        json_path = os.path.join(directory, json_name)
-        with open(json_path, "w") as json_file:
-            json.dump(self.labeled_path, json_file, indent=4)
-        print(json_path+' saved')
 
 
     def save_mask(self,viewer):
@@ -240,9 +203,29 @@ class Annotator:
         print(mask_path+' saved')
 
 
+    def map_click(self,event):
+        x, y = event.pos
+        w, h = self.viewer.window.qt_viewer.canvas.size
+        transform = self.viewer.window.qt_viewer.view.camera._scene_transform
+
+        p0 = transform.imap([x,y,0,1]) # map click pos to scene coordinates
+        p1 = [w/2,h/2,-1e10,1] # canvas center at infinite far z- (eye position in canvas coordinates)
+        p1 = transform.imap(p1) # map eye pos to scene coordinates
+        p0 = p0[0:3]/p0[3] # homogeneous coordinate to cartesian
+        p1 = p1[0:3]/p1[3] # homogeneous coordinate to cartesian
+
+        # calculate direction of the ray
+        d = p1 - p0
+        d = d[0:3]
+        d = d / np.linalg.norm(d)
+
+        p0 = list(p0[::-1]) # xyz to zyx
+        d = list(d[::-1]) # xyz to zyx
+        return p0, d
+
+
 def main():
     anno = Annotator()
-
 
 
 if __name__ == '__main__':

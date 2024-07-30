@@ -12,7 +12,7 @@ from ntools.patch import patchify_without_splices, get_patch_rois
 from ntools.dbio import segs2db
 from ntools.image_reader import wrap_image
 from ntools.models.deconv import Deconver
-from ntools.vis import show_segs_as_paths
+from ntools.vis import show_segs_as_instances
 
 
 class Seger():
@@ -26,7 +26,7 @@ class Seger():
 
 
     def postprocess(self,mask,min_size=50):
-        labeled_mask, num_features = label(mask,return_num=True)
+        labeled_mask, _ = label(mask,return_num=True)
         region_sizes = np.bincount(labeled_mask.ravel())
         small_regions = np.where(region_sizes < min_size)[0]
         for region in small_regions:
@@ -112,10 +112,10 @@ class Seger():
         z_border = 3
 
         skel = skeletonize(mask)
-        skel[:, :, :x_border] = 0
-        skel[:, :, -x_border:] = 0
-        skel[:, :, :y_border] = 0
-        skel[:, :, -y_border:] = 0
+        skel[:x_border, :, :] = 0
+        skel[-x_border:, :, :] = 0
+        skel[:, :y_border, :] = 0
+        skel[:, -y_border:, :] = 0
         skel[:, :, :z_border] = 0
         skel[:, :, -z_border:] = 0
 
@@ -132,7 +132,6 @@ class Seger():
             spanning_tree = nx.minimum_spanning_tree(graph, algorithm='kruskal', weight=None)
             # remove circles by keeping only DFS tree
             graph.remove_edges_from(set(graph.edges) - set(spanning_tree.edges))
-            # remove all the 
 
             branch_nodes = [node for node, degree in graph.degree() if degree >= 3]
             branch_nbrs = []
@@ -255,7 +254,7 @@ def command_line_interface():
         seg_points = []
         for seg in segs:
             seg_points.append(seg['sampled_points'])
-        show_segs_as_paths(seg_points, viewer, width=0.2)
+        show_segs_as_instances(seg_points, viewer)
         napari.run()
 
 

@@ -17,7 +17,10 @@ def segs2db(segs,path):
         {
             nid: int, PRIMARY KEY
             coord: str,
+            creator: str,
+            status: int, # 1 for show, 0 for hidden(removed)
             type: int, # 1 for Soma, 0 for normal node
+            date: str, TIMESTAMP
             checked: int
         }
     edge:
@@ -48,7 +51,10 @@ def segs2db(segs,path):
             CREATE TABLE IF NOT EXISTS nodes(
                 nid INTEGER PRIMARY KEY,
                 coord TEXT,
+                creator TEXT,
+                status INTEGER,
                 type INTEGER,
+                date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 checked INTEGER
             )
             '''
@@ -65,7 +71,7 @@ def segs2db(segs,path):
             )
             '''
         )
-    
+
     query = f"SELECT COUNT(*) FROM segs"
     cursor.execute(query)
     result = cursor.fetchone()
@@ -83,37 +89,48 @@ def segs2db(segs,path):
     result = cursor.fetchone()
     count = result[0]
 
+    conn.commit()
+    conn.close()
+
     # assign unique nid for each node in segs according to index
     nodes = [] # [nid,coord,nbr_ids]
     edges = [] # [source_id,target_id]
 
     for seg in segs:
         points = seg['sampled_points']
-        count+=1
-        nodes.append([count,points[0],[count+1]])
-        edges.append([count,count+1])
-        edges.append([count+1,count])
-
-        for c in points[1:-1]:
+        if len(points)>=2:
             count+=1
-            nodes.append([count,c,[count-1,count+1]])
+            nodes.append([count,points[0]])
             edges.append([count,count+1])
             edges.append([count+1,count])
 
-        count+=1
-        nodes.append([count,points[-1],[count-1]])
+            for c in points[1:-1]:
+                count+=1
+                nodes.append([count,c])
+                edges.append([count,count+1])
+                edges.append([count+1,count])
+
+            count+=1
+            nodes.append([count,points[-1]])
+        else:
+            count+=1
+            nodes.append([count,points[0]])
     
+
     # add nodes and edges to the database
+    nodes_list = []
     for node in nodes:
-        cursor.execute(f"INSERT INTO nodes (nid, coord, type, checked) VALUES (?, ?, ?, ?)",
-                    (node[0], sqlite3.Binary(str(node[1]).encode()), 0, 0))
+        nodes_list.append({
+            'nid': node[0],
+            'coord': node[1],
+            'creator': 'seger',
+            'status': 1,
+            'type': 0,
+            'checked': 0
+        })
 
-    for edge in edges:
-        cursor.execute(f"INSERT INTO edges (src, des, date, creator) VALUES (?, ?, ?, ?)",
-                    (edge[0], edge[1], datetime.now(), 'seger'))
-
-    conn.commit()
-    conn.close()
+    add_nodes(path,nodes_list)
+    add_edges(path,edges,user_name='seger')
 
 
 def read_segs(db_path):
@@ -144,8 +161,11 @@ def read_nodes(db_path):
         data = {
             'nid': row[0],
             'coord': eval(row[1]),
-            'type': row[2],
-            'checked': row[3],
+            'creator': row[2],
+            'status': row[3],
+            'type': row[4],
+            'date': row[5],
+            'checked': row[6]
         }
         points.append(data)
     conn.close()
@@ -169,42 +189,6 @@ def read_edges(db_path):
     conn.close()
     return edges
 
-
-"""
-def augment_nodes(db_path):
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
-    table_name = 'nodes'
-    cursor.execute(f"PRAGMA table_info({table_name})")
-    columns_info = cursor.fetchall()
-    column_names = [col_info[1] for col_info in columns_info]
-    conn.close()
-    if 'type' in column_names:
-        return
-        
-    # replace nbr column with type column of nodes table
-    nodes = read_nodes(db_path)
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
-    drop_command = f"DROP TABLE IF EXISTS nodes;"
-    cursor.execute(drop_command)
-
-    cursor.execute(
-            '''
-            CREATE TABLE IF NOT EXISTS nodes(
-                nid INTEGER PRIMARY KEY,
-                coord TEXT,
-                type INTEGER,
-                checked INTEGER
-            )
-            '''
-        )
-    for node in nodes:
-        cursor.execute(f"INSERT INTO nodes (nid, coord, type, checked) VALUES (?, ?, ?, ?)",(node['nid'], sqlite3.Binary(str(node['coord']).encode()), 0, node['checked'])) 
-
-    conn.commit()
-    conn.close()
-"""
 
 
 def delete_nodes(path,node_ids):
@@ -231,19 +215,41 @@ def delete_edges(path, edges):
     conn.close()
 
 
+'''
+CREATE TABLE IF NOT EXISTS nodes(
+    nid INTEGER PRIMARY KEY,
+    coord TEXT,
+    creator TEXT,
+    status INTEGER,
+    type INTEGER,
+    date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    checked INTEGER
+)
+'''
+
+
 def add_nodes(path,nodes):
     # given a list of nodes, write them to node table
-    # nodes: [{'nid','coord','type','checked'}]
+    # nodes: [{'nid','coord','creator','status','type'}]
     conn = sqlite3.connect(path)
     cursor = conn.cursor()
     for node in nodes:
-        cursor.execute(f"INSERT OR IGNORE INTO nodes (nid, coord, type, checked) VALUES (?, ?, ?, ?)",
-                    (node['nid'], sqlite3.Binary(str(node['coord']).encode()), node['type'], node['checked']))
+        cursor.execute(f"INSERT INTO nodes (nid, coord, creator, status, type, date, checked) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (
+                    node['nid'],
+                    sqlite3.Binary(str(node['coord']).encode()),
+                    node['creator'],
+                    node['status'] if 'status' in node.keys() else 1,
+                    node['type'],
+                    datetime.now(),
+                    node['checked'] if 'checked' in node.keys() else 0
+                )
+            )
     conn.commit()
     conn.close()
 
 
-def add_edges(path, edges, user_name='seger'):
+def add_edges(path, edges, user_name='somebody'):
     # given list of edges, write them to edges table
     # edges: [[src,tar]]
     undirected_edges = []
@@ -256,10 +262,10 @@ def add_edges(path, edges, user_name='seger'):
 
     for edge in undirected_edges:
         cursor.execute(f"INSERT OR IGNORE INTO edges (src, des, date, creator) VALUES (?, ?, ?, ?)",
-                    (edge[0], edge[1], datetime.now(), user_name))
+                    (edge[0], edge[1], datetime.now(), user_name)
+                )
     conn.commit()
     conn.close()
-
 
 
 def get_max_nid(path):
@@ -272,7 +278,6 @@ def get_max_nid(path):
     conn.commit()
     conn.close()
     return max_nid
-
 
 
 
@@ -300,7 +305,7 @@ def uncheck_nodes(path,nids):
 
 
 def change_type(path,nid,type):
-    # given list of node ids, label them as unchecked
+    # given node id, change node type
     conn = sqlite3.connect(path)
     cursor = conn.cursor()
 
@@ -310,18 +315,15 @@ def change_type(path,nid,type):
     conn.close()
 
 
-
-def get_size(path):
-    if not os.path.exists(path):
-        return 0
+def change_status(path,nid,status):
+    # given node id, change node status
     conn = sqlite3.connect(path)
     cursor = conn.cursor()
-    query = f"SELECT COUNT(*) FROM segs"
-    cursor.execute(query)
-    result = cursor.fetchone()
-    count = result[0]
-    return count
 
+    cursor.execute("UPDATE nodes SET status = ? WHERE nid = ?", (status, nid))
+
+    conn.commit()
+    conn.close()
 
 
 def get_edges_by(db_path, creator=None):
@@ -357,7 +359,10 @@ def initialize_db(db_path):
             CREATE TABLE IF NOT EXISTS nodes(
                 nid INTEGER PRIMARY KEY,
                 coord TEXT,
+                creator TEXT,
+                status INTEGER,
                 type INTEGER,
+                date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 checked INTEGER
             )
             '''
@@ -375,6 +380,7 @@ def initialize_db(db_path):
             '''
         )
     conn.close()
+
 
 def swc2db(swc_dir,db_path):
     '''
@@ -406,6 +412,8 @@ def swc2db(swc_dir,db_path):
             nodes.append({
                 'nid': int(nid) + nid_offset,
                 'coord': [x,y,z],
+                'creator': 'terafly',
+                'status': 1,
                 'type': 1 if type == 1 else 0,
                 'checked': 1
             })
@@ -416,9 +424,11 @@ def swc2db(swc_dir,db_path):
         add_edges(db_path,edges,'terafly')
 
 
-
 if __name__ == '__main__':
-    swc_dir = '/home/bean/workspace/data/fmost_swc'
-    db_path = '/home/bean/workspace/data/fmost.db'
-    swc2db(swc_dir,db_path)
-    pass
+    # swc_dir = '/home/bean/workspace/data/fmost_swc'
+    # db_path = '/home/bean/workspace/data/fmost.db'
+    # swc2db(swc_dir,db_path)
+    origin_path = './test/z002_interped.db'
+    segs = read_segs(origin_path)
+    out_path = './test/z002_origin.db'
+    segs2db(segs,out_path)
