@@ -76,6 +76,7 @@ def interp_all(db_path,image_path,interval=3,dis_thres=6):
                 {
                     'nid': node_ids[i],
                     'coord': node,
+                    'creator': 'astar',
                     'type': 0,
                     'checked': 0
                 }

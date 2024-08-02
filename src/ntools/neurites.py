@@ -11,7 +11,7 @@ class Neurites():
     '''
     Neurites class represents neurites with nodes and associated links between them. It integrates KDTree for efficient spatial querying and NetworkX graph for exploring and retrieving based on graph structure. This allows both proximity-based searches and graph-based operations.
     '''
-    def __init__(self,db_path,image_path=None):
+    def __init__(self,db_path,image_path=None,require_rtree=True):
         if image_path != None:
             self.image = wrap_image(image_path)
         else:
@@ -37,7 +37,8 @@ class Neurites():
         for node in tqdm(nodes):
             coords.append(node['coord'])
             coord_ids.append(node['nid'])
-            rtree_idx.insert(node['nid'], tuple(node['coord']+node['coord']), obj=node)
+            if require_rtree:
+                rtree_idx.insert(node['nid'], tuple(node['coord']+node['coord']), obj=node)
         self.kdtree = KDTree(np.array(coords))
         self.coord_ids = coord_ids
         self.rtree = rtree_idx
