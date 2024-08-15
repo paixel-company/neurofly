@@ -7,6 +7,7 @@ from ntools.image_reader import wrap_image
 from tifffile import imwrite
 
 
+
 class SimpleViewer:
     def __init__(self):
         self.viewer = napari.Viewer(ndisplay=3,title='simple viewer')
@@ -49,6 +50,17 @@ class SimpleViewer:
         self.container = widgets.Container(widgets=[self.image_path, self.save_dir,self.clip,self.x_size,self.y_size,self.z_size,self.x, self.y, self.z, self.level, self.level_info, self.patchify, self.button3, self.button1, self.button2,self.button4, self.button0])
         self.viewer.window.add_dock_widget(self.container, area='right')
 
+        self.image_path.changed.connect(self.on_image_reading)
+
+
+    def on_image_reading(self):
+        self.image = wrap_image(str(self.image_path.value))
+        x_offset,y_offset,z_offset,x_size,y_size,z_size = self.image.roi
+        self.x.value = (x_offset+x_size)//2
+        self.y.value = (y_offset+y_size)//2
+        self.z.value = (z_offset+z_size)//2
+        self.refresh()
+
 
     def clip_x(self):
         if self.clip.value == True:
@@ -65,11 +77,10 @@ class SimpleViewer:
 
     def refresh(self):
         if self.image is None:
-            self.image = wrap_image(str(self.image_path.value))
+            return
 
         roi = [int(float(self.x.value)) ,int(float(self.y.value)), int(float(self.z.value)),int(self.x_size.value), int(self.y_size.value), int(self.z_size.value)]
 
-        print(roi)
         self.image_layer.data = self.image.from_roi(roi, int(self.level.value))
         self.image_layer.translate = roi[:3]
         camera_state = self.viewer.camera.angles

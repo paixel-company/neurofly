@@ -215,7 +215,7 @@ class Annotator:
         p1 = p1[0:3]/p1[3] # homogeneous coordinate to cartesian
 
         # calculate direction of the ray
-        d = p1 - p0
+        d = p0 - p1
         d = d[0:3]
         d = d / np.linalg.norm(d)
 

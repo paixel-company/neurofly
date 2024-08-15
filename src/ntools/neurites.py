@@ -89,13 +89,24 @@ class Neurites():
         return segs, intens
 
 
-    def get_branches_and_paths(self):
-        connected_components = list(nx.connected_components(self.G))
-
-
-    def get_segs(self,len_thres=100):
-        pass
-
+    def get_segs_by(self,creator,len_thres=5):
+        edges_to_include = [(u, v) for u, v, attr in self.G.edges(data=True) if attr.get('creator') == creator]
+        sub_g = self.G.edge_subgraph(edges_to_include).copy()
+        branch_points = [node for node, degree in sub_g.degree() if degree >= 3]
+        sub_g.remove_nodes_from(branch_points)
+        connected_components = list(nx.connected_components(sub_g))
+        segs = []
+        for nodes in connected_components:
+            if len(nodes)<=len_thres:
+                continue
+            subgraph = sub_g.subgraph(nodes).copy()
+            end_nodes = [node for node, degree in subgraph.degree() if degree == 1]
+            if (len(end_nodes)!=2):
+                continue
+            path = nx.shortest_path(subgraph, source=end_nodes[0], target=end_nodes[1], weight=None, method='dijkstra') 
+            # path to segment
+            segs.append([subgraph.nodes[i]['coord'] for i in path])
+        return segs
 
 
 if __name__ == '__main__':

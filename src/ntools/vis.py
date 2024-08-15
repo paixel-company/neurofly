@@ -6,6 +6,36 @@ from ntools.dbio import read_nodes,read_edges
 from scipy.spatial import KDTree
 
 
+def draw_frame(roi,viewer,width=1,color='blue',scale=[1,1,1]):
+    # Define the ROI with format [x_offset, y_offset, z_offset, x_size, y_size, z_size]
+    x_offset, y_offset, z_offset, x_size, y_size, z_size = roi
+
+    # Calculate the coordinates of the vertices of the cuboid
+    vertices = np.array([
+        [x_offset, y_offset, z_offset],                          
+        [x_offset + x_size, y_offset, z_offset],                 
+        [x_offset + x_size, y_offset + y_size, z_offset],        
+        [x_offset, y_offset + y_size, z_offset],                 
+        [x_offset, y_offset, z_offset + z_size],                 
+        [x_offset + x_size, y_offset, z_offset + z_size],        
+        [x_offset + x_size, y_offset + y_size, z_offset + z_size], 
+        [x_offset, y_offset + y_size, z_offset + z_size]         
+    ])
+
+    edges = np.array([[0,1,2,3,0],[1,2,6,5,1],[5,6,7,4,5],[4,7,3,0,4],[0,1,5,4,0],[2,6,7,3,2]])
+
+    # Add the path layer
+    viewer.add_shapes(
+        data=vertices[edges],
+        shape_type='path',
+        edge_color=color,
+        edge_width=width,
+        face_color='transparent',
+        opacity=1,
+        scale=scale
+    )
+
+
 def show_segs_as_instances(segs,viewer,size=0.8):
     '''
     segs: [
@@ -170,82 +200,6 @@ def vis_edges_by_creator(viewer,db_path,color_dict):
     viewer.add_vectors(vectors,edge_color=v_colors,edge_width=2,vector_style='line')
 
 
-def compare(gt,pred1,pred2=None):
-    gt_nodes = read_nodes(gt)
-    gt_coords = [n['coord'] for n in gt_nodes]
-    gt_nodes = {n['nid']: n for n in gt_nodes}
-    gt_nids = gt_nodes.keys()
-    gt_tree = KDTree(np.array(gt_coords))
-
-    pred1_nodes = read_nodes(pred1)
-    pred1_coords = [n['coord'] for n in pred1_nodes]
-    pred1_nodes = {n['nid']: n for n in pred1_nodes}
-    pred1_nids = list(pred1_nodes.keys())
-    pred1_tree = KDTree(pred1_coords)
-
-    pred2_nodes = read_nodes(pred2)
-    pred2_coords = [n['coord'] for n in pred2_nodes]
-    pred2_nodes = {n['nid']: n for n in pred2_nodes}
-    pred2_nids = list(pred2_nodes.keys())
-    pred2_tree  = KDTree(np.array(pred2_coords))
-    print(f"Ground truth length: {len(gt_nodes)}")
-
-
-    distances, _ = pred1_tree.query(np.array(gt_coords))
-    recalled = np.where(distances <= 4)[0]
-    false_negative = np.where(distances > 4)[0]
-    print(f"SR recall: {len(recalled)/len(gt_coords)}")
-
-
-    distances, _ = gt_tree.query(np.array(pred1_coords))
-    true_pos = np.where(distances <= 4)[0]
-    false_pos = np.where(distances > 4)[0]
-    true_pos = [pred1_nids[i] for i in true_pos]
-    false_pos = [pred1_nids[i] for i in false_pos]
-    print(f"SR precision: {len(true_pos)/len(pred1_coords)}")
-
-    pred2_nodes = read_nodes(pred2)
-    pred2_coords = [n['coord'] for n in pred2_nodes]
-    pred2_nodes = {n['nid']: n for n in pred2_nodes}
-    pred2_nids = list(pred2_nodes.keys())
-    pred2_tree  = KDTree(np.array(pred2_coords))
-
-    distances, _ = pred2_tree.query(np.array(gt_coords))
-    recalled = np.where(distances <= 4)[0]
-    false_negative = np.where(distances > 4)[0]
-    print(f"Baseline recall: {len(recalled)/len(gt_coords)}")
-
-
-    distances, _ = gt_tree.query(np.array(pred2_coords))
-    true_pos = np.where(distances <= 4)[0]
-    false_pos = np.where(distances > 4)[0]
-    true_pos = [pred2_nids[i] for i in true_pos]
-    false_pos = [pred2_nids[i] for i in false_pos]
-    print(f"Baseline precision: {len(true_pos)/len(pred2_coords)}")
-
-
-    # nodes = read_nodes(pred1)
-    # nodes = {n['nid']: n for n in nodes}
-    # edges = [[e['src'],e['des'],e['creator']] for e in pred1_edges]
-    # edges = [edge for edge in edges if edge[0]<edge[1]]
-    # vectors = []
-    # v_colors = []
-
-    # for edge in edges:
-    #     [src,tar,creator] = [nodes[edge[0]]['coord'],nodes[edge[1]]['coord'],edge[2]]
-    #     v = [j-i for i,j in zip(src,tar)]
-    #     p = src
-    #     vectors.append([p,v])
-    #     if edge[0] in margin or edge[1] in margin:
-    #         v_colors.append('red')
-    #     else:
-    #         v_colors.append('orange')
-    
-
-    # viewer = napari.Viewer(ndisplay=3)
-    # viewer.add_vectors(vectors,edge_color=v_colors,edge_width=2,vector_style='line')
-    # napari.run()
-
 
 
 if __name__ == '__main__':
@@ -276,7 +230,7 @@ if __name__ == '__main__':
     '''
 
     # visualize segs as paths
-    # '''
+    '''
     from ntools.neurites import Neurites
     db_path = '/Users/bean/workspace/data/RM009_arbor_1.db'
     # db_path = 'test/z002_final.db'
@@ -284,4 +238,6 @@ if __name__ == '__main__':
     viewer = napari.Viewer(ndisplay=3)
     show_graph_as_paths(neurites,viewer)
     napari.run()
-    # '''
+    '''
+
+    # Animate labeling process

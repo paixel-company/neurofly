@@ -38,7 +38,7 @@ class Annotator:
         p = index.Property(dimension=3)
         self.rtree = index.Index(properties=p)
         self.connected_nodes = []
-        self.delected_nodes = {
+        self.delected = {
             'nodes': [],
             'edges': []
         }
@@ -114,6 +114,8 @@ class Annotator:
         self.ambiguous_button.clicked.connect(self.label_ambiguous)
         self.next_task_button.clicked.connect(self.get_next_task)
         self.deconv_path.changed.connect(self.load_deconver)
+        self.image_path.changed.connect(self.on_reading_image)
+        self.db_path.changed.connect(self.on_reading_db)
         # ---------------------------
 
         self.container = widgets.Container(widgets=[
@@ -147,8 +149,16 @@ class Annotator:
         self.viewer.window.add_dock_widget(self.container, area='right')
     
 
+    def on_reading_image(self):
+        self.image = wrap_image(str(self.image_path.value))
 
-    def on_proofreading_mode_change(self,event):
+
+    def on_reading_db(self):
+        self.G = None
+        self.refresh_panorama()
+
+
+    def on_proofreading_mode_change(self):
         self.refresh(self.viewer,keep_image=True)
     
 
@@ -193,7 +203,7 @@ class Annotator:
 
         self.selected_node.value = str(unchecked_nodes[0])
         self.connected_nodes = []
-        self.delected_nodes = {
+        self.delected = {
             'nodes': [],
             'edges': []
         }
@@ -227,9 +237,6 @@ class Annotator:
 
     def connect_one_nearest(self,viewer):
         # find one closest neighbour point, add it to self.connected_nodes
-        # if len(self.delected_nodes['nodes'])>0 or len(self.added_nodes)>0:
-        #     show_info('Do not use this if you have added or deleted nodes')
-        #     return
         selection = int(self.selected_node.value)
         c_coord = self.G.nodes[selection]['coord']
 
@@ -250,9 +257,6 @@ class Annotator:
 
     def connect_two_nearest(self,viewer):
         # find one closest neighbour point, add it to self.connected_nodes
-        # if len(self.delected_nodes['nodes'])>0 or len(self.added_nodes)>0:
-        #     show_info('Do not use this if you have added or deleted nodes')
-        #     return
         selection = int(self.selected_node.value)
         c_coord = self.G.nodes[selection]['coord']
         h_size = self.image_size.value//2
@@ -271,7 +275,7 @@ class Annotator:
 
 
     def clip_value(self):
-        # image size should be integer multiple of 64
+        # image size should be integer multiples of 64
         self.image_size.value = (self.image_size.value//64)*64
 
 
@@ -291,7 +295,7 @@ class Annotator:
             self.submit_result(self.viewer)
             self.mode_switch.mode = 'panorama'
             self.connected_nodes = []
-            self.delected_nodes = {
+            self.delected = {
                 'nodes': [],
                 'edges': []
             }
@@ -313,7 +317,7 @@ class Annotator:
             self.selected_node.value = str(last_node)
             self.connected_nodes = []
             self.added_nodes = []
-            self.delected_nodes = {
+            self.delected = {
                 'nodes': [],
                 'edges': []
             }
@@ -426,8 +430,6 @@ class Annotator:
             intensities = image[local_coords[:, 0], local_coords[:, 1], local_coords[:, 2]]
             mean_value = np.mean(intensities)
             std_value = np.std(intensities)
-            min_value = np.min(intensities)
-            max_value = np.max(intensities)
 
             self.image_layer.data = image
             self.image_layer.reset_contrast_limits()
@@ -448,13 +450,13 @@ class Annotator:
 
     def recover(self, viewer):
         # recover the preserved delected nodes if exists
-        for node in self.delected_nodes['nodes']:
+        for node in self.delected['nodes']:
             self.G.add_node(node['nid'], nid = node['nid'],coord = node['coord'], type = node['type'], checked = 0, creator = self.user_name.value)
             self.rtree.insert(node['nid'], tuple(node['coord']+node['coord']))
-        for edge in self.delected_nodes['edges']:
+        for edge in self.delected['edges']:
             self.G.add_edge(edge[0],edge[1])
 
-        self.delected_nodes = {
+        self.delected = {
             'nodes': [],
             'edges': []
         }
@@ -479,7 +481,7 @@ class Annotator:
         # label the center node of current task as checked in self.G
         # update canvas and local graph
         # run refresh to updata canvas
-        self.delected_nodes = {
+        self.delected = {
             'nodes': [],
             'edges': []
         }
@@ -516,7 +518,7 @@ class Annotator:
             uncheck_nodes(path,nids)
         else:
             deleted_nodes = []
-            for node in self.delected_nodes['nodes']:
+            for node in self.delected['nodes']:
                 deleted_nodes.append(node['nid'])
 
             if len(deleted_nodes)>0:
@@ -661,7 +663,7 @@ class Annotator:
 
     def node_selection(self, layer, event):
         # this is appended to panorama_points layer
-        if event.button == 2:
+        if event.button == 1:
             # remove all connected points
             position, direction = self.map_click(event)
             index = layer.get_value(
@@ -747,7 +749,7 @@ class Annotator:
                     if node_id in self.added_nodes:
                         self.added_nodes.remove(node_id)
                     else:
-                        self.delected_nodes['nodes'].append(self.G.nodes[node_id])
+                        self.delected['nodes'].append(self.G.nodes[node_id])
 
                     self.rtree.delete(node_id,tuple(self.G.nodes[node_id]['coord']+self.G.nodes[node_id]['coord']))
                     self.G.remove_node(node_id)
@@ -761,9 +763,9 @@ class Annotator:
                     if node_id in self.added_nodes:
                         self.added_nodes.remove(node_id)
                     else:
-                        self.delected_nodes['nodes'].append(self.G.nodes[node_id])
+                        self.delected['nodes'].append(self.G.nodes[node_id])
                     for nbr in self.G.neighbors(node_id):
-                        self.delected_nodes['edges'].append([node_id,nbr])
+                        self.delected['edges'].append([node_id,nbr])
                         # after removing, label its neighbors as unchecked
                         self.G.nodes[nbr]['checked'] = 0
 
@@ -778,12 +780,12 @@ class Annotator:
 
                 else:
                     # cut current_cc, select the largest subgraph
-                    self.delected_nodes['nodes'].append(self.G.nodes[node_id])
+                    self.delected['nodes'].append(self.G.nodes[node_id])
                     # center node is not removed, keep it unchecked
                     self.G.nodes[node_id]['checked']-=1
                     nbrs = list(self.G.neighbors(node_id))
                     for nbr in nbrs:
-                        self.delected_nodes['edges'].append([node_id,nbr])
+                        self.delected['edges'].append([node_id,nbr])
                         self.G.nodes[nbr]['checked'] = 0
                     self.rtree.delete(node_id,tuple(self.G.nodes[node_id]['coord']+self.G.nodes[node_id]['coord']))
                     self.G.remove_node(node_id)
@@ -869,7 +871,7 @@ class Annotator:
         p1 = p1[0:3]/p1[3] # homogeneous coordinate to cartesian
 
         # calculate direction of the ray
-        d = p1 - p0
+        d = p0 - p1
         d = d[0:3]
         d = d / np.linalg.norm(d)
 

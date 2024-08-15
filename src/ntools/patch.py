@@ -89,17 +89,14 @@ def get_patch_by_density(roi,block_size,segs):
 def patchify_without_splices(roi,patch_size,splices=300):
     rois = []
     xs = list(range(roi[0],roi[0]+roi[3],patch_size[0]))
-    # if (roi[0]+roi[3])%patch_size[0]!=0:
     xs.append(roi[0]+roi[3])
 
     ys = list(range(roi[1],roi[1]+roi[4],patch_size[1]))
-    # if (roi[1]+roi[4])%patch_size[1]!=0:
     ys.append(roi[1]+roi[4])
 
     zs = [z for z in range(roi[2],roi[2]+roi[5]) if z%splices==0]
     if roi[2]%splices!=0:
         zs.insert(0,roi[2])
-    # if (roi[2]+roi[5])%splices!=0:
     zs.append(roi[2]+roi[5])
 
     for x1,x2 in zip(xs[:-1],xs[1:]):
@@ -107,5 +104,3 @@ def patchify_without_splices(roi,patch_size,splices=300):
             for z1,z2 in zip(zs[:-1],zs[1:]):
                 rois.append([x1,y1,z1,x2-x1,y2-y1,z2-z1])
     return rois
-
-

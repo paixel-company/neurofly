@@ -315,6 +315,17 @@ def change_type(path,nid,type):
     conn.close()
 
 
+def change_creator(path,nid,creator):
+    # given node id, change node type
+    conn = sqlite3.connect(path)
+    cursor = conn.cursor()
+
+    cursor.execute("UPDATE nodes SET creator = ? WHERE nid = ?", (creator, nid))
+
+    conn.commit()
+    conn.close()
+
+
 def change_status(path,nid,status):
     # given node id, change node status
     conn = sqlite3.connect(path)
