@@ -100,9 +100,3 @@ def command_line_interface():
     args = parser.parse_args()
     interp_all(args.db_path,args.image_path,args.interval,args.dis_thres)
 
-
-
-if __name__ == '__main__':
-    db_path = '/home/bean/workspace/data/RM009_axons_1.db'
-    image_path = '/home/bean/workspace/data/RM009_axons_1.tif'
-    interp_all(db_path,image_path)

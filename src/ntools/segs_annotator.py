@@ -27,7 +27,7 @@ class Annotator:
         self.image_layer = self.viewer.add_image(np.ones((64, 64, 64), dtype=np.uint16),name='image',visible=False)
         self.point_layer = self.viewer.add_points(None,ndim=3,size=None,shading='spherical',edge_width=0,properties=None,face_colormap='hsl',name='points',visible=False)
         self.edge_layer = self.viewer.add_vectors(None,ndim=3,name='added edges',vector_style='triangle',visible=False)
-        self.ex_edge_layer = self.viewer.add_vectors(None,ndim=3,name='existing edges',vector_style='line',visible=False,edge_color='orange')
+        self.ex_edge_layer = self.viewer.add_vectors(None,ndim=3,name='existing edges',vector_style='line',visible=False,edge_color='orange',edge_width=0.3,opacity=1)
         # ------------------------
 
         self.add_control() # control panel
@@ -70,7 +70,7 @@ class Annotator:
 
         # ----- widgets -----
         self.user_name = widgets.LineEdit(label="user name", value='tester')
-        self.image_type = widgets.CheckBox(value=False,text='read zarr format')
+        self.image_type = widgets.CheckBox(value=False,text='read uncompressed zarr format')
         self.image_path = widgets.FileEdit(label="image path", mode='r')
         self.db_path = widgets.FileEdit(label="database path",filter='*.db')
         self.deconv_path = widgets.FileEdit(label="Deconv model weight")
@@ -173,7 +173,6 @@ class Annotator:
         self.deconver = Deconver(str(self.deconv_path.value))
         show_info("Doconvolution model loaded")
     
-
 
     def deconvolve(self,viewer):
         size = list(self.image_layer.data.shape)
@@ -335,7 +334,8 @@ class Annotator:
         # 2. query nodes in roi from rtree
         # 3. assign properties for nodes to identify different segments and center point, add existing edges to vector layer
         # 4. load image
-
+        if int(self.selected_node.value) not in self.G.nodes:
+            show_info("select a node first")
         connected_component = nx.node_connected_component(self.G, int(self.selected_node.value))
         unchecked_nodes = []
         for node in connected_component:
@@ -674,8 +674,6 @@ class Annotator:
             )
             if index is not None:
                 self.selected_node.value = str(layer.properties['nids'][index])
-            else:
-                self.selected_node.value = None
 
 
     def refresh_edge_layer(self):

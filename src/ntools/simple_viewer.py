@@ -1,6 +1,5 @@
 import numpy as np
 import napari
-import json
 import os
 from magicgui import magicgui, widgets
 from ntools.image_reader import wrap_image
@@ -21,6 +20,7 @@ class SimpleViewer:
         self.viewer.bind_key('f', self.refresh)
         self.image_layer.mouse_double_click_callbacks.append(self.on_double_click)
 
+        self.image_type = widgets.CheckBox(value=False,text='read zarr format')
         self.button0 = widgets.PushButton(text="refresh")
         self.button0.clicked.connect(self.refresh)
         self.button1 = widgets.PushButton(text="level up")
@@ -47,10 +47,18 @@ class SimpleViewer:
         self.patchify = widgets.CheckBox(value=False, text='patchify to 128')
         self.level = widgets.LineEdit(label="level",value=0)
         self.level_info = widgets.TextEdit(label='level info')
-        self.container = widgets.Container(widgets=[self.image_path, self.save_dir,self.clip,self.x_size,self.y_size,self.z_size,self.x, self.y, self.z, self.level, self.level_info, self.patchify, self.button3, self.button1, self.button2,self.button4, self.button0])
+        self.container = widgets.Container(widgets=[self.image_type, self.image_path, self.save_dir,self.clip,self.x_size,self.y_size,self.z_size,self.x, self.y, self.z, self.level, self.level_info, self.patchify, self.button3, self.button1, self.button2,self.button4, self.button0])
         self.viewer.window.add_dock_widget(self.container, area='right')
 
         self.image_path.changed.connect(self.on_image_reading)
+        self.image_type.changed.connect(self.switch_image_type)
+
+
+    def switch_image_type(self,event):
+        if event:
+            self.image_path.mode = 'd'
+        else:
+            self.image_path.mode = 'r'
 
 
     def on_image_reading(self):
@@ -134,7 +142,7 @@ class SimpleViewer:
         cy = int(float(self.y.value)) + self.y_size.value//2
         cz = int(float(self.z.value)) + self.z_size.value//2
         cl = int(self.level.value)
-        if cl==7:
+        if cl==len(self.image.rois)-1:
             return
         tl = cl+1
         c_spacing = self.image.info[cl]['spacing']

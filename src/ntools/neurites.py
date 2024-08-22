@@ -5,7 +5,7 @@ from ntools.dbio import read_edges, read_nodes
 from ntools.image_reader import wrap_image
 from rtree import index
 from tqdm import tqdm
-
+from brightest_path_lib.algorithm import AStarSearch
 
 class Neurites():
     '''
@@ -54,6 +54,28 @@ class Neurites():
             print(d,nbrs,sep='\n')
         return
     
+
+    def get_skeleton(self):
+        # get all segments 
+        # then interp the sparse points to get dense skeleton
+        segs, _ = self.get_segs_within(self.image.roi)
+        img = self.image.from_roi(self.image.roi)
+        skel = []
+        for seg in tqdm(segs):
+            for src, tar in zip(seg[:-1],seg[1:]):
+                sa = AStarSearch(img,src,tar)
+                path = None
+                try:
+                    path = sa.search()
+                except:
+                    print(f"Can't solve path from {src} to {tar}")
+                    path = [src, tar]
+                skel += path
+        skel = np.array(skel)
+        mask = np.zeros_like(img,dtype=np.uint16)
+        mask[skel[:, 0], skel[:, 1], skel[:, 2]] = 1
+        return mask
+
 
     def get_segs_within(self,roi):
         # get segs within roi, return a list of lists of nodes
@@ -126,3 +148,13 @@ if __name__ == '__main__':
     viewer.add_points(np.array(segs),size=2)
     napari.run()
     '''
+    db_path = '/Users/bean/workspace/data/labeled_blocks/fmost_test.db'
+    image_path = '/Users/bean/workspace/data/labeled_blocks/fmost_test.tif'
+    neurites = Neurites(db_path,image_path=image_path)
+    mask = neurites.get_skeleton()
+    import napari
+    viewer = napari.Viewer(ndisplay=3)
+    img = neurites.image.from_roi(neurites.image.roi)
+    viewer.add_image(img)
+    viewer.add_image(mask)
+    napari.run()

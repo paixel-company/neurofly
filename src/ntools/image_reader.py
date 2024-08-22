@@ -1,6 +1,7 @@
 import numpy as np
 import h5py
 import zarr
+import re
 from tifffile import imread
 
 
@@ -170,6 +171,140 @@ class Zarr():
 
 
 
+class ZipZarr():
+    '''
+    Load hierachical image data of several resolution levels like:
+        ├── 16um (864, 628, 876) float64
+        ├── 1um_foreground (13800, 10000, 14000) uint16
+        ├── 2um_foreground (6900, 5000, 7000) uint16
+        ├── 4um_foreground (3450, 2500, 3500) uint16
+        └── 8um (1728, 1256, 1752) uint16
+    '''
+    def __init__(self,image_path):
+        self.store = zarr.open(image_path,mode='r')
+        level_keys = list(self.store.keys())
+        resolution_dict = {
+            '1um': [],
+            '2um': [],
+            '4um': [],
+            '8um': [],
+            '16um': []
+        }
+        resolutions = [int(re.findall(r'\d+', dataset_name)[0]) for dataset_name in resolution_dict.keys()]
+        for dataset in self.store:
+            if '1um' in dataset:
+                resolution_dict['1um'] = dataset
+            elif '2um' in dataset:
+                resolution_dict['2um'] = dataset
+            elif '4um' in dataset:
+                resolution_dict['4um'] = dataset
+            elif '8um' in dataset:
+                resolution_dict['8um'] = dataset
+            elif '16um' in dataset:
+                resolution_dict['16um'] = dataset
+        self.images = [self.store[dataset] for key, dataset in resolution_dict.items()]
+        self.roi = [0,0,0] + list(self.images[0].shape)
+        self.info = []
+        self.rois = []
+        for i,image in enumerate(self.images):
+            self.info.append(
+                {
+                    'level': i,
+                    'spacing': [resolutions[i],resolutions[i],resolutions[i]],
+                    'image_size': list(image.shape)
+                }
+            )
+            self.rois.append([0,0,0]+list(image.shape))
+
+
+    def __getitem__(self, indices, level=0):
+        x_min, x_max = indices[0].start, indices[0].stop
+        y_min, y_max = indices[1].start, indices[1].stop
+        z_min, z_max = indices[2].start, indices[2].stop
+        x_slice = slice(x_min-self.rois[level][0],x_max-self.rois[level][0])
+        y_slice = slice(y_min-self.rois[level][1],y_max-self.rois[level][1])
+        z_slice = slice(z_min-self.rois[level][2],z_max-self.rois[level][2])
+        return np.transpose(self.images[level][z_slice,y_slice,x_slice],(2,1,0))
+
+
+    def from_roi(self, coords, level=0, padding='constant'):
+        # coords: [x_offset,y_offset,z_offset,x_size,y_size,z_size]
+        coords = [int(coord) for coord in coords]
+        x_min, x_max = coords[0], coords[3]+coords[0]
+        y_min, y_max = coords[1], coords[4]+coords[1]
+        z_min, z_max = coords[2], coords[5]+coords[2]
+        # add padding
+        [xlb,ylb,zlb] = self.rois[level][0:3] 
+        [xhb,yhb,zhb] = [i+j for i,j in zip(self.rois[level][:3],self.rois[level][3:])]
+        xlp = max(xlb-x_min,0)
+        xhp = max(x_max-xhb,0)
+        ylp = max(ylb-y_min,0)
+        yhp = max(y_max-yhb,0)
+        zlp = max(zlb-z_min,0)
+        zhp = max(z_max-zhb,0)
+
+        x_slice = slice(x_min-self.rois[level][0]+xlp,x_max-self.rois[level][0]-xhp)
+        y_slice = slice(y_min-self.rois[level][1]+ylp,y_max-self.rois[level][1]-yhp)
+        z_slice = slice(z_min-self.rois[level][2]+zlp,z_max-self.rois[level][2]-zhp) 
+        img = np.transpose(self.images[level][z_slice,y_slice,x_slice],(2,1,0))
+
+        padded = np.pad(img, ((xlp, xhp), (ylp, yhp), (zlp, zhp)), padding)
+
+        return padded
+
+
+    def from_local(self, coords, level=0):
+        # coords: [x_offset,y_offset,z_offset,x_size,y_size,z_size]
+        coords = [int(coord) for coord in coords]
+        x_min, x_max = coords[0], coords[3]+coords[0]
+        y_min, y_max = coords[1], coords[4]+coords[1]
+        z_min, z_max = coords[2], coords[5]+coords[2]
+        x_slice = slice(x_min,x_max)
+        y_slice = slice(y_min,y_max)
+        z_slice = slice(z_min,z_max) 
+        return np.transpose(self.images[level][z_slice,y_slice,x_slice],(2,1,0))
+
+
+    def get_info(self):
+        if 'DataSetInfo' in self.hdf.keys():
+            image_info = self.hdf.get('DataSetInfo')['Image'].attrs
+            # calculate physical size
+            extents = []
+            for k in ['ExtMin0', 'ExtMin1', 'ExtMin2', 'ExtMax0', 'ExtMax1', 'ExtMax2']:
+                extents.append(eval(image_info[k]))
+            dims_physical = []
+            for i in range(3):
+                dims_physical.append(extents[3+i]-extents[i])
+            origin = [int(extents[0]), int(extents[1]), int(extents[2])]
+        else:
+            origin = [0,0,0]
+            dims_physical = None
+
+        info = []
+        # get data size
+        level_keys = list(self.hdf['DataSet'].keys())
+        for i, level in enumerate(level_keys):
+            hdata_group = self.hdf['DataSet'][level]['TimePoint 0']['Channel 0']
+            data = hdata_group['Data']
+            dims_data = []
+            for k in ["ImageSizeX", "ImageSizeY", "ImageSizeZ"]:
+                dims_data.append(int(eval(hdata_group.attrs.get(k))))
+            if dims_physical == None:
+                dims_physical = dims_data
+            spacing = [dims_physical[0]/dims_data[0], dims_physical[1]/dims_data[1], dims_physical[2]/dims_data[2]]
+            info.append(
+                {
+                    'level':level,
+                    'dims_physical':dims_physical,
+                    'image_size':dims_data,
+                    'data_shape':[data.shape[2],data.shape[1],data.shape[0]],
+                    'data_chunks':data.chunks,
+                    'spacing':spacing,
+                    'origin':origin
+                }
+            )
+        return info
+
 
 
 class Tiff():
@@ -234,9 +369,11 @@ class Tiff():
 def wrap_image(image_path):
     if 'ims' in image_path:
         return Ims(image_path)
-    elif 'zarr' in image_path:
-        return Zarr(image_path)
+    elif 'zarr.zip' in image_path:
+        return ZipZarr(image_path)
     elif 'tif' in image_path:
+        return Tiff(image_path)
+    elif 'zarr' in image_path:
         return Tiff(image_path)
     else:
         raise Exception("image type not supported yet") 
@@ -244,12 +381,4 @@ def wrap_image(image_path):
 
 
 if __name__ == '__main__':
-    image_path = '/home/bean/workspace/data/seg_datasets/c002_labeled/skels/img_1.tif'
-    image = Tiff(image_path)
-    img = image.from_roi([10,10,10,120,120,20])
-    print(img.shape)
-
-    import napari
-    viewer = napari.Viewer(ndisplay=3)
-    viewer.add_image(img)
-    napari.run()
+    pass

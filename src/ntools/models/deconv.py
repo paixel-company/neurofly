@@ -174,4 +174,3 @@ if __name__ == '__main__':
     v.add_image(sr_img)
     napari.run()
 
-
