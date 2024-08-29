@@ -5,6 +5,7 @@ from napari.utils.notifications import show_info
 from ntools.models.deconv import Deconver
 from rtree import index
 from tqdm import tqdm
+from ntools.neurites import Neurites
 import numpy as np
 import networkx as nx
 import napari
@@ -86,6 +87,7 @@ class Annotator:
         self.mode_switch.mode = 'panorama'
         self.selected_node = widgets.LineEdit(label="node selection", value=0)
         self.total_length = widgets.LineEdit(label="total length", value=0)
+        self.total_nodes_left = widgets.LineEdit(label="total nodes left", value=0)
         self.nodes_left = widgets.LineEdit(label="nodes left", value=0)
         self.image_size = widgets.Slider(label="block size", value=64, min=64, max=1024)
         self.refresh_button = widgets.PushButton(text="refresh (d)")
@@ -135,6 +137,7 @@ class Annotator:
             self.selected_node,
             self.total_length,
             self.nodes_left,
+            self.total_nodes_left,
             self.image_size,
             self.proofreading_switch,
             self.refresh_button,
@@ -184,6 +187,13 @@ class Annotator:
 
     def get_next_task(self,viewer):
         # find the largest unchecked component, set one of its endings selected node.
+
+        nodes_left = [
+            node for node in self.G.nodes
+            if (self.G.nodes[node]['checked'] == -1) or (self.G.degree(node) == 1 and self.G.nodes[node]['checked'] == 0)
+        ]
+        self.total_nodes_left.value = len(nodes_left)
+
         connected_components = list(nx.connected_components(self.G))
         connected_components.sort(key=len)
 
@@ -347,6 +357,7 @@ class Annotator:
             dis.append(nx.shortest_path_length(self.G, source=int(self.selected_node.value), target=nid))
         unchecked_nodes = [x for _,x in sorted(zip(dis,unchecked_nodes))]
         
+
         self.update_meter(len(connected_component),len(unchecked_nodes))
 
         if len(unchecked_nodes)==0 and self.proofreading_switch.value == False:
@@ -539,6 +550,7 @@ class Annotator:
                 add_edges(path,added_edges,self.user_name.value)
 
             check_node(path,int(self.selected_node.value))
+
 
 
     def update_meter(self,total_len,n_nodes):

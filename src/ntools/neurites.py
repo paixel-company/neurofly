@@ -1,17 +1,20 @@
 import networkx as nx
 import numpy as np
 from scipy.spatial import KDTree
-from ntools.dbio import read_edges, read_nodes
+from ntools.dbio import read_edges, read_nodes, uncheck_nodes
 from ntools.image_reader import wrap_image
 from rtree import index
 from tqdm import tqdm
 from brightest_path_lib.algorithm import AStarSearch
 
+
+
 class Neurites():
     '''
-    Neurites class represents neurites with nodes and associated links between them. It integrates KDTree for efficient spatial querying and NetworkX graph for exploring and retrieving based on graph structure. This allows both proximity-based searches and graph-based operations.
+    Neurites class represents neurites with nodes and associated links between them. It integrates RTree and KDTree for efficient spatial querying and NetworkX graph for exploring and retrieving based on graph structure. This allows both proximity-based searches and graph-based operations.
     '''
     def __init__(self,db_path,image_path=None,require_rtree=True):
+        self.db_path = db_path
         if image_path != None:
             self.image = wrap_image(image_path)
         else:
@@ -26,7 +29,6 @@ class Neurites():
 
         for edge in edges:
             self.G.add_edge(edge['src'],edge['des'],creator = edge['creator'])
-
 
         p = index.Property(dimension=3)
         rtree_idx = index.Index(properties=p)
@@ -44,22 +46,13 @@ class Neurites():
         self.rtree = rtree_idx
 
     
-    def get_pn_links(self,k,dis_thres):
-        # augment graph by adding knn edges
-        # to be finished
-        for node in self.G.nodes:
-            coord = self.G.nodes[node]['coord']
-            d, nbrs = self.kdtree.query(coord, k, p=2)
-            nbrs = [self.coord_ids[i] for i in nbrs]
-            print(d,nbrs,sep='\n')
-        return
-    
-
-    def get_skeleton(self):
+    def get_skeleton(self,roi=None):
         # get all segments 
         # then interp the sparse points to get dense skeleton
-        segs, _ = self.get_segs_within(self.image.roi)
-        img = self.image.from_roi(self.image.roi)
+        if roi == None:
+            roi = self.image.roi
+        segs, _ = self.get_segs_within(roi)
+        img = self.image.from_roi(roi)
         skel = []
         for seg in tqdm(segs):
             for src, tar in zip(seg[:-1],seg[1:]):
@@ -111,7 +104,7 @@ class Neurites():
         return segs, intens
 
 
-    def get_segs_by(self,creator,len_thres=5):
+    def get_segs_by(self,creator,len_thres=0):
         edges_to_include = [(u, v) for u, v, attr in self.G.edges(data=True) if attr.get('creator') == creator]
         sub_g = self.G.edge_subgraph(edges_to_include).copy()
         branch_points = [node for node, degree in sub_g.degree() if degree >= 3]
@@ -129,6 +122,29 @@ class Neurites():
             # path to segment
             segs.append([subgraph.nodes[i]['coord'] for i in path])
         return segs
+    
+
+    def uncheck_junctions(self):
+        terminals = [node for node, degree in self.G.degree() if degree == 1 and self.G.nodes[node]['checked'] == 0]
+        h_size = 6
+        unlabeled_junctions = []
+        for t in terminals:
+            c_coord = self.G.nodes[t]['coord']
+            query_box = (c_coord[0]-h_size,c_coord[1]-h_size,c_coord[2]-h_size,c_coord[0]+h_size,c_coord[1]+h_size,c_coord[2]+h_size)
+            nbrs = list(self.rtree.intersection(query_box, objects=False))
+            cc = list(nx.node_connected_component(self.G, t))
+            if len(cc)<=10:
+                continue
+            nbrs = [i for i in nbrs if i not in cc]
+            if len(nbrs)>0:
+                nbr_coords = np.array([self.G.nodes[nid]['coord'] for nid in nbrs])
+                distances = np.linalg.norm(nbr_coords - np.array(c_coord), axis=1)
+                closest_indice = nbrs[np.argsort(distances)[0]]
+                if self.G.degree[closest_indice]==2:
+                    unlabeled_junctions.append(closest_indice)
+        uncheck_nodes(self.db_path, unlabeled_junctions)
+        print(f"{len(unlabeled_junctions)} nodes unchecked.")
+
 
 
 if __name__ == '__main__':
@@ -148,6 +164,8 @@ if __name__ == '__main__':
     viewer.add_points(np.array(segs),size=2)
     napari.run()
     '''
+    # 
+    '''
     db_path = '/Users/bean/workspace/data/labeled_blocks/fmost_test.db'
     image_path = '/Users/bean/workspace/data/labeled_blocks/fmost_test.tif'
     neurites = Neurites(db_path,image_path=image_path)
@@ -158,3 +176,9 @@ if __name__ == '__main__':
     viewer.add_image(img)
     viewer.add_image(mask)
     napari.run()
+    '''
+
+    db_path = '/Users/bean/workspace/data/labeled_blocks/fmost_dense.db'
+    image_path = '/Users/bean/workspace/data/labeled_blocks/fmost_dense.tif'
+    neurites = Neurites(db_path,image_path=image_path)
+    neurites.uncheck_junctions()

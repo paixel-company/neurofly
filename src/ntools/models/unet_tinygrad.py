@@ -5,7 +5,6 @@ from tinygrad import nn
 from tinygrad.tensor import Tensor
 from tinygrad.helpers import get_child
 
-
 class BatchNorm3d:
     def __init__(self, sz, eps=1e-5, affine=True, track_running_stats=True, momentum=0.1):
         self.eps, self.track_running_stats, self.momentum = eps, track_running_stats, momentum
@@ -87,6 +86,7 @@ class UNet3D:
         state_dict = torch.load(ckpt_path,map_location='cpu')
         if 'model' in state_dict.keys():
             state_dict = state_dict['model']
+            torch.save(state_dict, ckpt_path)
         state_dict = {k.replace('module.',''):v for k,v in state_dict.items()}
         for k, v in state_dict.items():
             obj = get_child(self, k)
@@ -97,7 +97,7 @@ class UNet3D:
 
 
 class SegNet():
-    def __init__(self,ckpt_path,l_clip=None,bg_thres=150):
+    def __init__(self,ckpt_path,bg_thres=150):
         # TODO: remove this after mps accalators were enabled
         os.environ['GPU'] = '1'
         if 'tiny' in ckpt_path:
@@ -111,19 +111,17 @@ class SegNet():
 
         self.model = model
         self.bg_thres = bg_thres
-        self.l_clip = l_clip
     
     def preprocess(self,img,percentiles=[0.1,1.0]):
         # input img nparray [0,65535]
         # output img tensor [0,1]
+        img = np.clip(img, a_min=self.bg_thres, a_max=None) - self.bg_thres
         flattened_arr = np.sort(img.flatten())
         clip_low = int(percentiles[0] * len(flattened_arr))
         clip_high = int(percentiles[1] * len(flattened_arr))-1
         if flattened_arr[clip_high]<self.bg_thres:
             return None
         clipped_arr = np.clip(img, flattened_arr[clip_low], flattened_arr[clip_high])
-        if self.l_clip is not None:
-            clipped_arr = np.clip(clipped_arr,self.l_clip,65535)
         min_value = np.min(clipped_arr)
         max_value = np.max(clipped_arr)
         filtered = clipped_arr

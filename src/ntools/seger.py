@@ -16,12 +16,12 @@ from ntools.vis import show_segs_as_instances
 
 
 class Seger():
-    def __init__(self,ckpt_path,bg_thres,l_clip=None,device=None):
+    def __init__(self,ckpt_path,bg_thres,device=None):
         if sys.platform == 'darwin':
             from ntools.models.unet_tinygrad import SegNet
         else:
             from ntools.models.unet_torch import SegNet
-        self.seg_net = SegNet(ckpt_path,l_clip,bg_thres)
+        self.seg_net = SegNet(ckpt_path,bg_thres)
         self.bw = 14 #border width (128-100)//2
 
 
@@ -178,7 +178,7 @@ class Seger():
 
 
 
-    def process_whole(self,image_path,roi=None,dec=None):
+    def process_whole(self,image_path,chunk_size=300,splice=100000,roi=None,dec=None):
         '''
         cut whole brain image to [300,300,300] cubes without splices (z coordinates % 300 == 0)
         '''
@@ -187,7 +187,7 @@ class Seger():
             image_roi = image.roi
         else:
             image_roi = roi
-        rois = patchify_without_splices(image_roi,[300,300,300])
+        rois = patchify_without_splices(image_roi,[chunk_size,chunk_size,chunk_size],splices=splice)
         # pad rois
         segs = []
         for roi in tqdm(rois):
@@ -216,7 +216,9 @@ def command_line_interface():
     parser.add_argument('-image_path', type=str, help="path to the input image, only zarr, ims, tif are currently supported")
     parser.add_argument('-db_path', type=str, default=None, help="path to the output database file")
     parser.add_argument('-roi', type=int, nargs='+', default=None, help="image roi, if kept None, process the whole image")
-    parser.add_argument('-l_clip', type=int, default=None, help="value to clip voxel values, use this to repress bright noise")
+    parser.add_argument('-bg_thres', type=int, default=150, help="ignore images with maximum intensity smaller than this")
+    parser.add_argument('-chunk_size', type=int, default=300, help="image size for skeletonization")
+    parser.add_argument('-splice', type=int, default=100000, help="set this value if your image contain splices at certain interval on z axis")
     parser.add_argument('-vis', action='store_true', default=False, help="whether to visualize result after segmentation")
     parser.add_argument('-dec_weight', type=str, default=None, help="path to the weight of deconvolution model")
     args = parser.parse_args()
@@ -226,13 +228,13 @@ def command_line_interface():
     print(f"Using weight: {args.weight_path}")
     print(f"Processing image: {args.image_path}, roi: {args.roi}")
 
-    seger = Seger(args.weight_path,l_clip=args.l_clip,bg_thres=150) # bg_thres is used to filter out empty image like image borders
+    seger = Seger(args.weight_path,bg_thres=args.bg_thres) # bg_thres is used to filter out empty image like image borders
     if args.dec_weight is not None:
         deconver = Deconver(args.dec_weight)
     else:
         deconver = None
 
-    segs = seger.process_whole(args.image_path, roi=args.roi, dec=deconver)
+    segs = seger.process_whole(args.image_path, chunk_size=args.chunk_size, splice=args.splice,roi=args.roi, dec=deconver)
 
     if args.db_path is not None:
         print(f"Saving {len(segs)} segs to {args.db_path}")
@@ -256,7 +258,6 @@ def command_line_interface():
             seg_points.append(seg['sampled_points'])
         show_segs_as_instances(seg_points, viewer)
         napari.run()
-
 
 
 if __name__ == '__main__':
@@ -330,4 +331,3 @@ if __name__ == '__main__':
         seg_points.append(seg['sampled_points'])
     show_segs_as_instances(seg_points,viewer,size=2)
     napari.run()
-
