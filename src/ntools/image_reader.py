@@ -182,7 +182,8 @@ class ZipZarr():
     '''
     def __init__(self,image_path):
         self.store = zarr.open(image_path,mode='r')
-        level_keys = list(self.store.keys())
+        if 'nm' in list(self.store.keys())[0]:
+            self.store = self.store['488nm_10X']
         resolution_dict = {
             '1um': [],
             '2um': [],
@@ -202,7 +203,7 @@ class ZipZarr():
                 resolution_dict['8um'] = dataset
             elif '16um' in dataset:
                 resolution_dict['16um'] = dataset
-        self.images = [self.store[dataset] for key, dataset in resolution_dict.items()]
+        self.images = [self.store[dataset] for key, dataset in resolution_dict.items() if dataset != []]
         self.roi = [0,0,0] + list(self.images[0].shape)
         self.info = []
         self.rois = []
@@ -381,4 +382,5 @@ def wrap_image(image_path):
 
 
 if __name__ == '__main__':
-    pass
+    image_path = "/home/bean/workspace/data/t066.zarr.zip"
+    wrap_image(image_path)

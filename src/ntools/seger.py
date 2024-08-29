@@ -12,7 +12,7 @@ from ntools.patch import patchify_without_splices, get_patch_rois
 from ntools.dbio import segs2db
 from ntools.image_reader import wrap_image
 from ntools.models.deconv import Deconver
-from ntools.vis import show_segs_as_instances
+from ntools.vis import show_segs_as_instances, show_segs_as_paths
 
 
 class Seger():
@@ -220,6 +220,7 @@ def command_line_interface():
     parser.add_argument('-chunk_size', type=int, default=300, help="image size for skeletonization")
     parser.add_argument('-splice', type=int, default=100000, help="set this value if your image contain splices at certain interval on z axis")
     parser.add_argument('-vis', action='store_true', default=False, help="whether to visualize result after segmentation")
+    parser.add_argument('-path', action='store_true', default=True, help="whether to visualize result as paths")
     parser.add_argument('-dec_weight', type=str, default=None, help="path to the weight of deconvolution model")
     args = parser.parse_args()
     if args.weight_path is None:
@@ -256,7 +257,10 @@ def command_line_interface():
         seg_points = []
         for seg in segs:
             seg_points.append(seg['sampled_points'])
-        show_segs_as_instances(seg_points, viewer)
+        if args.path:
+            show_segs_as_paths(seg_points, viewer, width=0.3)
+        else:
+            show_segs_as_instances(seg_points, viewer)
         napari.run()
 
 
