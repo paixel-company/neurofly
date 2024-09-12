@@ -122,9 +122,13 @@ class UNet_3d_Generator(nn.Module):
 class Deconver():
     def __init__(self,weight_path):
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu' 
+        # self.device = 'mps'
         model = UNet_3d_Generator(in_channels=1, out_channels=1, features=[64, 128, 256], norm_type=None, dim=3)
-        ckpt = torch.load(weight_path)
-        model.load_state_dict(ckpt['params'], strict=True)
+        weight_dict = torch.load(weight_path)
+        if 'params' in weight_dict.keys():
+            weight_dict = weight_dict['params']
+            torch.save(weight_dict, weight_path)
+        model.load_state_dict(weight_dict, strict=True)
         model.eval()
         model.to(self.device)
         self.model = model
@@ -159,11 +163,10 @@ class Deconver():
 
 
 if __name__ == '__main__':
-    weight_path = 'src/ntools/mpcn.pth'
+    weight_path = 'src/weights/mpcn.pth'
     deconver = Deconver(weight_path)
 
-
-    image_path = '/home/bean/workspace/data/seg_datasets/rm009_labeled/skels/img_26.tif'
+    image_path = '/Users/bean/workspace/data/rm009_skels/img_26.tif'
     from tifffile import imread
     img = imread(image_path)
 
@@ -173,4 +176,3 @@ if __name__ == '__main__':
     v = napari.Viewer(ndisplay=3)
     v.add_image(sr_img)
     napari.run()
-

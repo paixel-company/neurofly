@@ -221,7 +221,7 @@ def command_line_interface():
     parser.add_argument('-splice', type=int, default=100000, help="set this value if your image contain splices at certain interval on z axis")
     parser.add_argument('-vis', action='store_true', default=False, help="whether to visualize result after segmentation")
     parser.add_argument('-path', action='store_true', default=True, help="whether to visualize result as paths")
-    parser.add_argument('-dec_weight', type=str, default=None, help="path to the weight of deconvolution model")
+    parser.add_argument('-deconv', action='store_true', default=False, help="deconvolve image before segmentation")
     args = parser.parse_args()
     if args.weight_path is None:
         args.weight_path = os.path.join(package_dir,'models/universal_tiny.pth')
@@ -230,12 +230,13 @@ def command_line_interface():
     print(f"Processing image: {args.image_path}, roi: {args.roi}")
 
     seger = Seger(args.weight_path,bg_thres=args.bg_thres) # bg_thres is used to filter out empty image like image borders
-    if args.dec_weight is not None:
-        deconver = Deconver(args.dec_weight)
+    if args.deconv:
+        dec_weight_path = os.path.join(package_dir,'models/mpcn.pth')
+        deconver = Deconver(dec_weight_path)
     else:
         deconver = None
 
-    segs = seger.process_whole(args.image_path, chunk_size=args.chunk_size, splice=args.splice,roi=args.roi, dec=deconver)
+    segs = seger.process_whole(args.image_path, chunk_size=args.chunk_size, splice=args.splice, roi=args.roi, dec=deconver)
 
     if args.db_path is not None:
         print(f"Saving {len(segs)} segs to {args.db_path}")
