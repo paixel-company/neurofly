@@ -3,7 +3,7 @@ import functools
 import torch
 import numpy as np
 
-# normaliz layer
+
 def get_norm_layer(norm_type='instance', dim=2):
     if dim == 2:
         BatchNorm = nn.BatchNorm2d
@@ -26,7 +26,6 @@ def get_norm_layer(norm_type='instance', dim=2):
     return norm_layer
 
 
-# Conv block
 class DoubleConv(nn.Module):
     def __init__(self, in_channels, out_channels, *, norm_type='batch', dim=2):
         super(DoubleConv, self).__init__()
@@ -54,7 +53,7 @@ class DoubleConv(nn.Module):
         x = self.conv(x)
         return x
 
-# Unet
+
 class UNet(nn.Module):
     def __init__(self, in_channels=1, out_channels=1, features=[64, 128, 256, 512], *, norm_type='batch', dim=2):
         super(UNet, self).__init__()
@@ -170,12 +169,9 @@ class SegNet():
         
 
 if __name__ == "__main__":
-    ckpt_path = 'src/ntools/universal_tiny.pth'
+    ckpt_path = 'src/ntools/models/universal_tiny.pth'
     segnet = SegNet(ckpt_path)
     from tifffile import imread, imwrite
-    path = '/Users/bean/workspace/data/rm009/img_1.tif'
+    path = '/Users/bean/workspace/data/rm009_skels/img_1.tif'
     img = imread(path)
     mask = segnet.get_mask(img)
-
-    imwrite('test.tif',mask)
-

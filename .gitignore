@@ -14,4 +14,4 @@ __pythran__/
 tests/
 test/
 src/weights/
-src/ntools/models/mpcn.pth
+# src/ntools/models/mpcn*.pth

@@ -146,10 +146,9 @@ class Annotator:
 
     def on_double_click(self,layer,event):
         #based on ray casting
-        position, direction = self.map_click(event) 
         near_point, far_point = layer.get_ray_intersections(
-            position,
-            direction,
+            event.position,
+            event.view_direction,
             event.dims_displayed
         )
         sample_ray = far_point - near_point
@@ -202,26 +201,6 @@ class Annotator:
 
         print(mask_path+' saved')
 
-
-    def map_click(self,event):
-        x, y = event.pos
-        w, h = self.viewer.window.qt_viewer.canvas.size
-        transform = self.viewer.window.qt_viewer.view.camera._scene_transform
-
-        p0 = transform.imap([x,y,0,1]) # map click pos to scene coordinates
-        p1 = [w/2,h/2,-1e10,1] # canvas center at infinite far z- (eye position in canvas coordinates)
-        p1 = transform.imap(p1) # map eye pos to scene coordinates
-        p0 = p0[0:3]/p0[3] # homogeneous coordinate to cartesian
-        p1 = p1[0:3]/p1[3] # homogeneous coordinate to cartesian
-
-        # calculate direction of the ray
-        d = p0 - p1
-        d = d[0:3]
-        d = d / np.linalg.norm(d)
-
-        p0 = list(p0[::-1]) # xyz to zyx
-        d = list(d[::-1]) # xyz to zyx
-        return p0, d
 
 
 def main():

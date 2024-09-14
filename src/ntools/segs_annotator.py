@@ -2,7 +2,7 @@ from ntools.dbio import read_edges, read_nodes, add_nodes, add_edges, check_node
 from magicgui import widgets
 from ntools.image_reader import wrap_image
 from napari.utils.notifications import show_info
-from ntools.models.deconv import Deconver
+from ntools.models.mpcn_tinygrad import Deconver
 from rtree import index
 from tqdm import tqdm
 from ntools.neurites import Neurites
@@ -10,6 +10,7 @@ import numpy as np
 import networkx as nx
 import napari
 import random
+import os 
 
 # use PushButton itself as a recorder
 class PushButton(widgets.PushButton):
@@ -23,10 +24,10 @@ class Annotator:
         self.viewer = napari.Viewer(ndisplay=3, title='Segs Annotator')
         # panorama mode
         self.panorama_image = self.viewer.add_image(np.ones((64, 64, 64), dtype=np.uint16), name='panorama image',visible=False)
-        self.panorama_points = self.viewer.add_points(None,ndim=3,size=None,shading='spherical',edge_width=0,properties=None,face_colormap='hsl',name='panorama view',blending='additive',visible=True)
+        self.panorama_points = self.viewer.add_points(None,ndim=3,size=None,shading='spherical',border_width=0,properties=None,face_colormap='hsl',name='panorama view',blending='additive',visible=True)
         # labeling mode
         self.image_layer = self.viewer.add_image(np.ones((64, 64, 64), dtype=np.uint16),name='image',visible=False)
-        self.point_layer = self.viewer.add_points(None,ndim=3,size=None,shading='spherical',edge_width=0,properties=None,face_colormap='hsl',name='points',visible=False)
+        self.point_layer = self.viewer.add_points(None,ndim=3,size=None,shading='spherical',border_width=0,properties=None,face_colormap='hsl',name='points',visible=False)
         self.edge_layer = self.viewer.add_vectors(None,ndim=3,name='added edges',vector_style='triangle',visible=False)
         self.ex_edge_layer = self.viewer.add_vectors(None,ndim=3,name='existing edges',vector_style='line',visible=False,edge_color='orange',edge_width=0.3,opacity=1)
         # ------------------------
@@ -63,7 +64,6 @@ class Annotator:
         self.viewer.bind_key('n', self.get_next_task,overwrite=True)
         self.viewer.bind_key('i', self.deconvolve,overwrite=True)
 
-
         self.panorama_points.mouse_drag_callbacks.append(self.node_selection)
         self.point_layer.mouse_drag_callbacks.append(self.node_operations)
         self.image_layer.mouse_drag_callbacks.append(self.put_point)
@@ -74,6 +74,7 @@ class Annotator:
         self.image_type = widgets.CheckBox(value=False,text='read uncompressed zarr format')
         self.image_path = widgets.FileEdit(label="image path", mode='r')
         self.db_path = widgets.FileEdit(label="database path",filter='*.db')
+
         self.deconv_path = widgets.FileEdit(label="Deconv model weight")
         self.image_switch = widgets.CheckBox(value=False,text='show panorama image')
         self.segs_switch = widgets.CheckBox(value=True,text='show/hide long segments')
@@ -118,6 +119,13 @@ class Annotator:
         self.deconv_path.changed.connect(self.load_deconver)
         self.image_path.changed.connect(self.on_reading_image)
         self.db_path.changed.connect(self.on_reading_db)
+        # ---------------------------
+
+        # ------load default deconver-----
+        package_dir = os.path.dirname(os.path.abspath(__file__))
+        weight_path = str(os.path.join(package_dir,'models/mpcn_dumpy.pth'))
+        if os.path.exists(weight_path):
+            self.deconv_path.value = weight_path
         # ---------------------------
 
         self.container = widgets.Container(widgets=[
@@ -174,7 +182,7 @@ class Annotator:
 
     def load_deconver(self):
         self.deconver = Deconver(str(self.deconv_path.value))
-        show_info("Doconvolution model loaded")
+        show_info("Deconvolution model loaded")
     
 
     def deconvolve(self,viewer):
@@ -677,10 +685,9 @@ class Annotator:
         # this is appended to panorama_points layer
         if event.button == 1:
             # remove all connected points
-            position, direction = self.map_click(event)
             index = layer.get_value(
-                position,
-                view_direction = direction,
+                event.position,
+                view_direction = event.view_direction,
                 dims_displayed=event.dims_displayed,
                 world=True,
             )
@@ -712,10 +719,9 @@ class Annotator:
         
         One operation contains (click type, mode, modifier)
         '''
-        position, direction = self.map_click(event)
         index = layer.get_value(
-            position,
-            view_direction = direction,
+            event.position,
+            view_direction = event.view_direction,
             dims_displayed=event.dims_displayed,
             world=True,
         )
@@ -829,10 +835,9 @@ class Annotator:
     def put_point(self,layer,event):
         # add new node to self.G and self.add_nodes
         if(event.button==2):
-            position, direction = self.map_click(event) 
             near_point, far_point = layer.get_ray_intersections(
-                position,
-                direction,
+                event.position,
+                event.view_direction,
                 event.dims_displayed
             )
             sample_ray = far_point - near_point
@@ -868,27 +873,6 @@ class Annotator:
             self.refresh(self.viewer)
             self.viewer.layers.selection.active = self.image_layer
     
-
-    def map_click(self,event):
-        x, y = event.pos
-        w, h = self.viewer.window.qt_viewer.canvas.size
-        transform = self.viewer.window.qt_viewer.view.camera._scene_transform
-
-        p0 = transform.imap([x,y,0,1]) # map click pos to scene coordinates
-        p1 = [w/2,h/2,-1e10,1] # canvas center at infinite far z- (eye position in canvas coordinates)
-        p1 = transform.imap(p1) # map eye pos to scene coordinates
-        p0 = p0[0:3]/p0[3] # homogeneous coordinate to cartesian
-        p1 = p1[0:3]/p1[3] # homogeneous coordinate to cartesian
-
-        # calculate direction of the ray
-        d = p0 - p1
-        d = d[0:3]
-        d = d / np.linalg.norm(d)
-
-        p0 = list(p0[::-1]) # xyz to zyx
-        d = list(d[::-1]) # xyz to zyx
-        return p0, d
-
 
 def main():
     anno = Annotator()

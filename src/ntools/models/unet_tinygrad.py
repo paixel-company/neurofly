@@ -39,19 +39,6 @@ class UpsampleBlock:
 
 class UNet3D:
     def __init__(self, in_channels=1,filters=[32,64,128], n_class=1):
-        '''
-        filters = [in_channels]+filters
-        inp, out = filters[:-1], filters[1:]
-        self.downs = [DownsampleBlock(i, o) for i, o in zip(inp, out)]
-        self.ups = []
-        for feature in filters[1:-1][::-1]:
-            self.ups.append(
-                    nn.ConvTranspose2d(feature*2, feature, kernel_size=(2,2,2), stride=2)
-                )
-            self.ups.append(
-                    UpsampleBlock(feature*2, feature)
-                )
-        '''
         self.downs = []
         self.ups = []
         for feature in filters:
@@ -98,8 +85,7 @@ class UNet3D:
 
 class SegNet():
     def __init__(self,ckpt_path,bg_thres=150):
-        # TODO: remove this after mps accalators were enabled
-        # os.environ['GPU'] = '1'
+        # TODO: remove this after conflicts with conda were solved
         os.environ['METAL_XCODE'] = '1'
         os.environ['DISABLE_COMPILER_CACHE'] = '1'
         if 'tiny' in ckpt_path:
@@ -151,11 +137,10 @@ class SegNet():
 
 
 if __name__ == "__main__":
-    ckpt_path = 'src/ntools/universal_tiny.pth'
+    ckpt_path = 'src/ntools/models/universal_tiny.pth'
     segnet = SegNet(ckpt_path)
     from tifffile import imread, imwrite
     path = '/Users/bean/workspace/data/rm009/img_1.tif'
     img = imread(path)
     mask = segnet.get_mask(img)
-
     imwrite('test.tif',mask)

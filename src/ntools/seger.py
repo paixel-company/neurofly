@@ -11,7 +11,7 @@ from tqdm import tqdm
 from ntools.patch import patchify_without_splices, get_patch_rois
 from ntools.dbio import segs2db
 from ntools.image_reader import wrap_image
-from ntools.models.deconv import Deconver
+from ntools.models.mpcn_torch import Deconver
 from ntools.vis import show_segs_as_instances, show_segs_as_paths
 
 
@@ -19,8 +19,10 @@ class Seger():
     def __init__(self,ckpt_path,bg_thres,device=None):
         if sys.platform == 'darwin':
             from ntools.models.unet_tinygrad import SegNet
+            from ntools.models.mpcn_tinygrad import Deconver
         else:
             from ntools.models.unet_torch import SegNet
+            from ntools.models.mpcn_torch import Deconver
         self.seg_net = SegNet(ckpt_path,bg_thres)
         self.bw = 14 #border width (128-100)//2
 
@@ -107,9 +109,9 @@ class Seger():
 
         interval = 3
 
-        x_border = 3
-        y_border = 3
-        z_border = 3
+        x_border = 1
+        y_border = 1
+        z_border = 1
 
         skel = skeletonize(mask)
         skel[:x_border, :, :] = 0
@@ -212,9 +214,9 @@ class Seger():
 def command_line_interface():
     package_dir = os.path.dirname(os.path.abspath(__file__))
     parser = argparse.ArgumentParser(description="args for seger")
-    parser.add_argument('-weight_path', type=str, default=None, help="path to weight of the segmentation model")
-    parser.add_argument('-image_path', type=str, help="path to the input image, only zarr, ims, tif are currently supported")
-    parser.add_argument('-db_path', type=str, default=None, help="path to the output database file")
+    parser.add_argument('--weight_path', '-w',type=str, default=None, help="path to weight of the segmentation model")
+    parser.add_argument('--image_path', '-i',type=str, help="path to the input image, only zarr, ims, tif are currently supported")
+    parser.add_argument('--db_path', '-d',type=str, default=None, help="path to the output database file")
     parser.add_argument('-roi', type=int, nargs='+', default=None, help="image roi, if kept None, process the whole image")
     parser.add_argument('-bg_thres', type=int, default=150, help="ignore images with maximum intensity smaller than this")
     parser.add_argument('-chunk_size', type=int, default=300, help="image size for skeletonization")
@@ -231,7 +233,7 @@ def command_line_interface():
 
     seger = Seger(args.weight_path,bg_thres=args.bg_thres) # bg_thres is used to filter out empty image like image borders
     if args.deconv:
-        dec_weight_path = os.path.join(package_dir,'models/mpcn.pth')
+        dec_weight_path = os.path.join(package_dir,'models/mpcn_dumpy.pth')
         deconver = Deconver(dec_weight_path)
     else:
         deconver = None
