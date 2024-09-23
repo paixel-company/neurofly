@@ -81,6 +81,7 @@ class Deconver():
         # TODO: remove this after conflicts with conda were solved
         os.environ['METAL_XCODE'] = '1'
         os.environ['DISABLE_COMPILER_CACHE'] = '1'
+        os.environ['GPU'] = '1'
         if 'tiny' in ckpt_path:
             model_dims = [32,64,128]
         elif 'medium' in ckpt_path:
