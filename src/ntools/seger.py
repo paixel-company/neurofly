@@ -17,11 +17,11 @@ class Seger():
     def __init__(self,ckpt_path,bg_thres):
         # if nvidia gpu is available, use pytorch to inference, else use tinygrad
         if torch.cuda.is_available():
-            from ntools.models.unet_tinygrad import SegNet
-            from ntools.models.mpcn_tinygrad import Deconver
-        else:
             from ntools.models.unet_torch import SegNet
             from ntools.models.mpcn_torch import Deconver
+        else:
+            from ntools.models.unet_tinygrad import SegNet
+            from ntools.models.mpcn_tinygrad import Deconver
         self.seg_net = SegNet(ckpt_path,bg_thres)
         # border width (128-100)//2
         self.bw = 14
