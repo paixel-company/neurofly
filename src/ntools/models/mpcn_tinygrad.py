@@ -19,7 +19,6 @@ class DownsampleBlock:
         return x.sequential(self.conv)
 
 
-
 class MPCN:
     def __init__(self,in_channels, filters, n_class):
 
@@ -121,12 +120,3 @@ class Deconver():
         sr_img = self.postprocess(out,min_value,max_value).astype(np.uint16)
         return sr_img
 
-
-if __name__ == "__main__":
-    ckpt_path = 'src/ntools/models/mpcn_dumpy.pth'
-    deconv = Deconver(ckpt_path)
-    from tifffile import imread, imwrite
-    path = '/Users/bean/workspace/data/rm009_skels/img_21.tif'
-    img = imread(path)
-    out = deconv.process_one(img)
-    imwrite('test.tif', out)

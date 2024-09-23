@@ -14,8 +14,6 @@ class Ims():
         self.hdf = h5py.File(ims_path,'r')
         level_keys = list(self.hdf['DataSet'].keys())
         self.images = [self.hdf['DataSet'][key]['TimePoint 0']['Channel 0']['Data'] for key in level_keys]
-        # image_info = self.hdf.get('DataSetInfo')['Image'].attrs
-        # print(eval(image_info['ExtMax3']))
         self.rois = []
         self.info = self.get_info()
         for i in self.info:
@@ -59,18 +57,6 @@ class Ims():
         return padded
 
 
-    def from_local(self, coords, level=0):
-        # coords: [x_offset,y_offset,z_offset,x_size,y_size,z_size]
-        coords = [int(coord) for coord in coords]
-        x_min, x_max = coords[0], coords[3]+coords[0]
-        y_min, y_max = coords[1], coords[4]+coords[1]
-        z_min, z_max = coords[2], coords[5]+coords[2]
-        x_slice = slice(x_min,x_max)
-        y_slice = slice(y_min,y_max)
-        z_slice = slice(z_min,z_max) 
-        return np.transpose(self.images[level][z_slice,y_slice,x_slice],(2,1,0))
-
-
     def get_info(self):
         if 'DataSetInfo' in self.hdf.keys():
             image_info = self.hdf.get('DataSetInfo')['Image'].attrs
@@ -112,73 +98,14 @@ class Ims():
         return info
 
 
-
-class Zarr():
-    '''
-    zarr.attrs['roi'] = [x_offset,y_offset,z_offset,x_size,y_size,z_size]
-    To load image directly from global coordinates, wrap .zarr object in this class.
-    '''
-    def __init__(self,zarr_path):
-        self.image = zarr.open(zarr_path, mode='r') 
-        self.roi = self.image.attrs['roi']
-        print(f'Image ROI: {self.roi[0:3]} to {[i+j for i,j in zip(self.roi[0:3],self.roi[3:6])]}')
-        self.shape = self.roi[3:6]
-    
-    def __getitem__(self, indices):
-        x_min, x_max = indices[0].start, indices[0].stop
-        y_min, y_max = indices[1].start, indices[1].stop
-        z_min, z_max = indices[2].start, indices[2].stop
-        x_slice = slice(x_min-self.roi[0],x_max-self.roi[0])
-        y_slice = slice(y_min-self.roi[1],y_max-self.roi[1])
-        z_slice = slice(z_min-self.roi[2],z_max-self.roi[2])
-        return self.image[x_slice,y_slice,z_slice]
-
-    def from_roi(self, coords, padding='constant'):
-        # coords: [x_offset,y_offset,z_offset,x_size,y_size,z_size]
-        x_min, x_max = coords[0], coords[3]+coords[0]
-        y_min, y_max = coords[1], coords[4]+coords[1]
-        z_min, z_max = coords[2], coords[5]+coords[2]
-        # add padding
-        [xlb,ylb,zlb] = self.roi[0:3] 
-        [xhb,yhb,zhb] = [i+j for i,j in zip(self.roi[:3],self.roi[3:])]
-
-        xlp = max(xlb-x_min,0)
-        xhp = max(x_max-xhb,0)
-        ylp = max(ylb-y_min,0)
-        yhp = max(y_max-yhb,0)
-        zlp = max(zlb-z_min,0)
-        zhp = max(z_max-zhb,0)
-
-        x_slice = slice(x_min-self.roi[0]+xlp,x_max-self.roi[0]-xhp)
-        y_slice = slice(y_min-self.roi[1]+ylp,y_max-self.roi[1]-yhp)
-        z_slice = slice(z_min-self.roi[2]+zlp,z_max-self.roi[2]-zhp) 
-        img = self.image[x_slice,y_slice,z_slice]
-
-        padded = np.pad(img, ((xlp, xhp), (ylp, yhp), (zlp, zhp)), padding)
-
-        return padded
-
-    def from_local(self, coords):
-        # coords: [x_offset,y_offset,z_offset,x_size,y_size,z_size]
-        coords = [int(coord) for coord in coords]
-        x_min, x_max = coords[0], coords[3]+coords[0]
-        y_min, y_max = coords[1], coords[4]+coords[1]
-        z_min, z_max = coords[2], coords[5]+coords[2]
-        x_slice = slice(x_min,x_max)
-        y_slice = slice(y_min,y_max)
-        z_slice = slice(z_min,z_max) 
-        return self.image[x_slice,y_slice,z_slice]
-
-
-
 class ZipZarr():
     '''
     Load hierachical image data of several resolution levels like:
-        ├── 16um (864, 628, 876) float64
-        ├── 1um_foreground (13800, 10000, 14000) uint16
-        ├── 2um_foreground (6900, 5000, 7000) uint16
-        ├── 4um_foreground (3450, 2500, 3500) uint16
-        └── 8um (1728, 1256, 1752) uint16
+        ├── 1um uint16
+        ├── 2um uint16
+        ├── 4um uint16
+        ├── 8um uint16
+        └── 16um uint16
     '''
     def __init__(self,image_path):
         self.store = zarr.open(image_path,mode='r')
@@ -252,18 +179,6 @@ class ZipZarr():
         padded = np.pad(img, ((xlp, xhp), (ylp, yhp), (zlp, zhp)), padding)
 
         return padded
-
-
-    def from_local(self, coords, level=0):
-        # coords: [x_offset,y_offset,z_offset,x_size,y_size,z_size]
-        coords = [int(coord) for coord in coords]
-        x_min, x_max = coords[0], coords[3]+coords[0]
-        y_min, y_max = coords[1], coords[4]+coords[1]
-        z_min, z_max = coords[2], coords[5]+coords[2]
-        x_slice = slice(x_min,x_max)
-        y_slice = slice(y_min,y_max)
-        z_slice = slice(z_min,z_max) 
-        return np.transpose(self.images[level][z_slice,y_slice,x_slice],(2,1,0))
 
 
     def get_info(self):
@@ -355,17 +270,6 @@ class Tiff():
 
         return padded
 
-    def from_local(self, coords):
-        # coords: [x_offset,y_offset,z_offset,x_size,y_size,z_size]
-        coords = [int(coord) for coord in coords]
-        x_min, x_max = coords[0], coords[3]+coords[0]
-        y_min, y_max = coords[1], coords[4]+coords[1]
-        z_min, z_max = coords[2], coords[5]+coords[2]
-        x_slice = slice(x_min,x_max)
-        y_slice = slice(y_min,y_max)
-        z_slice = slice(z_min,z_max) 
-        return self.image[x_slice,y_slice,z_slice]
-
 
 def wrap_image(image_path):
     if 'ims' in image_path:
@@ -374,13 +278,5 @@ def wrap_image(image_path):
         return ZipZarr(image_path)
     elif 'tif' in image_path:
         return Tiff(image_path)
-    elif 'zarr' in image_path:
-        return Tiff(image_path)
     else:
         raise Exception("image type not supported yet") 
-
-
-
-if __name__ == '__main__':
-    image_path = "/home/bean/workspace/data/t066.zarr.zip"
-    wrap_image(image_path)

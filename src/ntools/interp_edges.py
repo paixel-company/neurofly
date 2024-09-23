@@ -6,8 +6,6 @@ from brightest_path_lib.algorithm import NBAStarSearch
 from tqdm import tqdm
 
 
-
-
 def interp_edge(edge,image,interval=3,dis_thres=6):
     '''
     edges: [[x,y,z],[x,y,z]], coordinates of two nodes
@@ -99,4 +97,3 @@ def command_line_interface():
     parser.add_argument('-dis_thres', type=int , default=6, help="minimal distance between nodes for intropolation")
     args = parser.parse_args()
     interp_all(args.db_path,args.image_path,args.interval,args.dis_thres)
-

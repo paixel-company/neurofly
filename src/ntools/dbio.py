@@ -393,7 +393,7 @@ def initialize_db(db_path):
     conn.close()
 
 
-def swc2db(swc_dir,db_path):
+def swc2db(swc_dir,db_path,creator='unknown'):
     '''
     swc files to database file, facilitating data manipulation
     swc: nid type x y z radius parent
@@ -423,7 +423,7 @@ def swc2db(swc_dir,db_path):
             nodes.append({
                 'nid': int(nid) + nid_offset,
                 'coord': [x,y,z],
-                'creator': 'terafly',
+                'creator': creator,
                 'status': 1,
                 'type': 1 if type == 1 else 0,
                 'checked': 1
@@ -434,12 +434,3 @@ def swc2db(swc_dir,db_path):
         add_nodes(db_path,nodes)
         add_edges(db_path,edges,'terafly')
 
-
-if __name__ == '__main__':
-    # swc_dir = '/home/bean/workspace/data/fmost_swc'
-    # db_path = '/home/bean/workspace/data/fmost.db'
-    # swc2db(swc_dir,db_path)
-    origin_path = './test/z002_interped.db'
-    segs = read_segs(origin_path)
-    out_path = './test/z002_origin.db'
-    segs2db(segs,out_path)

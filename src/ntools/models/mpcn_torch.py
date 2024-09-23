@@ -157,20 +157,3 @@ class Deconver():
         out = self.model(img)
         sr_img = self.postprocess(out,min_value,max_value).astype(np.uint16)
         return sr_img
-
-
-
-if __name__ == '__main__':
-    weight_path = 'src/weights/mpcn.pth'
-    deconver = Deconver(weight_path)
-
-    image_path = '/Users/bean/workspace/data/rm009_skels/img_26.tif'
-    from tifffile import imread
-    img = imread(image_path)
-
-    sr_img = deconver.process_one(img)
-
-    import napari
-    v = napari.Viewer(ndisplay=3)
-    v.add_image(sr_img)
-    napari.run()

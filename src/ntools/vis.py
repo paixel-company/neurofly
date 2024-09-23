@@ -1,15 +1,12 @@
-import napari
 import numpy as np
 import random
 import networkx as nx
 from ntools.dbio import read_nodes,read_edges
-from scipy.spatial import KDTree
 
 
 def draw_frame(roi,viewer,width=1,color='blue',scale=[1,1,1]):
-    # Define the ROI with format [x_offset, y_offset, z_offset, x_size, y_size, z_size]
+    # roi: [x_offset, y_offset, z_offset, x_size, y_size, z_size]
     x_offset, y_offset, z_offset, x_size, y_size, z_size = roi
-
     # Calculate the coordinates of the vertices of the cuboid
     vertices = np.array([
         [x_offset, y_offset, z_offset],                          
@@ -24,7 +21,6 @@ def draw_frame(roi,viewer,width=1,color='blue',scale=[1,1,1]):
 
     edges = np.array([[0,1,2,3,0],[1,2,6,5,1],[5,6,7,4,5],[4,7,3,0,4],[0,1,5,4,0],[2,6,7,3,2]])
 
-    # Add the path layer
     viewer.add_shapes(
         data=vertices[edges],
         shape_type='path',
@@ -164,7 +160,7 @@ def show_graph_as_paths(neurites,viewer,len_thres=10):
 
 def vis_edges_by_creator(viewer,db_path,color_dict):
     '''
-    visualize edges by there creators
+    visualize edges by their creators
     color_dict: {
         'creator1': color1,
         'creator2': color2,
@@ -194,50 +190,4 @@ def vis_edges_by_creator(viewer,db_path,color_dict):
         else:
             v_colors.append(color_dict['default'])
             edge_length[creator]+=1 
-
-    
-    print(edge_length)
     viewer.add_vectors(vectors,edge_color=v_colors,edge_width=2,vector_style='line')
-
-
-
-
-if __name__ == '__main__':
-    # colorize edges by creators
-    '''
-    from ntools.image_reader import wrap_image
-    db_path = 'test/z002_interped.db'
-    image_path = 'test/z002_level4.tif'
-    image = wrap_image(image_path)
-    color_dict = {
-        'tester': 'red',
-        'seger': 'yellow',
-        'astar': 'red',
-        'default': 'white'
-    }
-    viewer = napari.Viewer(ndisplay=3)
-    viewer.add_image(image.from_roi(image.roi),scale=[16,16,16])
-    vis_edges_by_creator(viewer,db_path,color_dict)
-    napari.run()
-    '''
-
-    # compair results with ground truth
-    '''
-    gt_path = '/home/bean/workspace/data/RM009_axons_2.db'
-    pred1_path = '/home/bean/workspace/data/RM009_axons_2_sr.db'
-    pred2_path = '/home/bean/workspace/data/RM009_axons_2_baseline.db'
-    compare(gt_path,pred1_path,pred2_path)
-    '''
-
-    # visualize segs as paths
-    '''
-    from ntools.neurites import Neurites
-    db_path = '/Users/bean/workspace/data/RM009_arbor_1.db'
-    # db_path = 'test/z002_final.db'
-    neurites = Neurites(db_path)
-    viewer = napari.Viewer(ndisplay=3)
-    show_graph_as_paths(neurites,viewer)
-    napari.run()
-    '''
-
-    # Animate labeling process

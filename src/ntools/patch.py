@@ -1,7 +1,5 @@
 import numpy as np
 
-
-
 def get_patch_coords(roi,block_size):
     volume_size = roi[3:6]
     origin = roi[0:3]
@@ -32,58 +30,16 @@ def get_subregions(region, subregion_size, overlap):
     w, h, d = region[3:]
     w_s, h_s, d_s = subregion_size
     o_w, o_h, o_d = overlap
-
     subregions = []
-
-    # Calculate step size
     step_x = w_s - o_w
     step_y = h_s - o_h
     step_z = d_s - o_d
-
-    # Generate subregions
     for x in range(x0, x0 + w, step_x):
         for y in range(y0, y0 + h, step_y):
             for z in range(z0, z0 + d, step_z):
-                # Ensure the subregion fits within the original region
                 if x + w_s <= x0 + w and y + h_s <= y0 + h and z + d_s <= z0 + d:
                     subregions.append([x, y, z, w_s, h_s, d_s])
-
     return subregions
-
-
-
-def get_patch_by_density(roi,block_size,segs):
-    volume_size = roi[3:]
-    offset = roi[0:3]
-    patch_coords = get_patch_coords(roi,block_size)
-    points = []
-    segs = sum(segs,[])
-    for seg in segs:
-        for node in seg:
-            points.append([i-j for i,j in zip(node['pos'],offset)])
-    points = np.array(points)
-
-    grid_count = np.array(volume_size)//block_size
-    hist = np.zeros(grid_count, np.uint16)
-    points = np.floor(points/block_size)
-    points = points.astype(int)
-    inboundx = np.less(points[:,0],grid_count[0]-1)
-    inboundy = np.less(points[:,1],grid_count[1]-1) 
-    inboundz = np.less(points[:,2],grid_count[2]-1) 
-    inbound = np.logical_and(inboundx,inboundy)
-    inbound = np.logical_and(inbound,inboundz)
-
-    for point in points[inbound,:]:
-        hist[point[0]][point[1]][point[2]] += 1
-
-    sorted_indices = np.argsort(hist, axis=None)
-    sorted_indices = sorted_indices[::-1]
-    sorted_coordinates = np.unravel_index(sorted_indices, hist.shape)
-    sorted_values = hist[sorted_coordinates]
-    sorted_coordinates = np.array(sorted_coordinates).transpose()
-    block_coords = sorted_coordinates*block_size+np.array(offset)
-
-    return block_coords.tolist()
 
 
 def patchify_without_splices(roi,patch_size,splices=300):

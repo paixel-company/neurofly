@@ -133,8 +133,8 @@ class SegNet():
 
     
     def preprocess(self,img,percentiles=[0.1,1.0]):
-        # input img nparray [0,65535]
-        # output img tensor [0,1]
+        # input img: ndarray [0,65535]
+        # output img: tensor [0,1]
         img = np.clip(img, a_min=self.bg_thres, a_max=None) - self.bg_thres
         flattened_arr = np.sort(img.flatten())
         clip_low = int(percentiles[0] * len(flattened_arr))
@@ -167,11 +167,3 @@ class SegNet():
         else:
             return np.zeros_like(img)
         
-
-if __name__ == "__main__":
-    ckpt_path = 'src/ntools/models/universal_tiny.pth'
-    segnet = SegNet(ckpt_path)
-    from tifffile import imread, imwrite
-    path = '/Users/bean/workspace/data/rm009_skels/img_1.tif'
-    img = imread(path)
-    mask = segnet.get_mask(img)

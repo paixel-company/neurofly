@@ -91,7 +91,6 @@ class Neurites():
             path = [[i-j for i,j in zip(self.G.nodes[node]['coord'],roi[0:3])] for node in path]
             segs.append(path)
         # get intensity value
-
         intens = []
         if self.image is not None:
             img = self.image.from_roi(roi)
@@ -145,40 +144,3 @@ class Neurites():
         uncheck_nodes(self.db_path, unlabeled_junctions)
         print(f"{len(unlabeled_junctions)} nodes unchecked.")
 
-
-
-if __name__ == '__main__':
-    # visualize segs within given roi
-    '''
-    db_path = '/Users/bean/workspace/data/RM009_axons_1.db'
-    image_path = '/Users/bean/workspace/data/RM009_axons_1.tif'
-    neurites = Neurites(db_path,image_path=image_path)
-    roi = [0,0,0,300,300,300]
-    segs,intens = neurites.get_segs_within(roi)
-    print(len(segs),len(intens))
-    import napari
-    viewer = napari.Viewer(ndisplay=3)
-    img = neurites.image.from_roi(roi)
-    viewer.add_image(img)
-    segs = sum(segs,[])
-    viewer.add_points(np.array(segs),size=2)
-    napari.run()
-    '''
-    # 
-    '''
-    db_path = '/Users/bean/workspace/data/labeled_blocks/fmost_test.db'
-    image_path = '/Users/bean/workspace/data/labeled_blocks/fmost_test.tif'
-    neurites = Neurites(db_path,image_path=image_path)
-    mask = neurites.get_skeleton()
-    import napari
-    viewer = napari.Viewer(ndisplay=3)
-    img = neurites.image.from_roi(neurites.image.roi)
-    viewer.add_image(img)
-    viewer.add_image(mask)
-    napari.run()
-    '''
-
-    db_path = '/Users/bean/workspace/data/labeled_blocks/fmost_dense.db'
-    image_path = '/Users/bean/workspace/data/labeled_blocks/fmost_dense.tif'
-    neurites = Neurites(db_path,image_path=image_path)
-    neurites.uncheck_junctions()

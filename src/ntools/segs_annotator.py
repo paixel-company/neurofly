@@ -1,3 +1,8 @@
+import numpy as np
+import networkx as nx
+import napari
+import random
+import os
 from ntools.dbio import read_edges, read_nodes, add_nodes, add_edges, check_node, uncheck_nodes, change_type, delete_nodes
 from magicgui import widgets
 from ntools.image_reader import wrap_image
@@ -5,14 +10,8 @@ from napari.utils.notifications import show_info
 from ntools.models.mpcn_tinygrad import Deconver
 from rtree import index
 from tqdm import tqdm
-from ntools.neurites import Neurites
-import numpy as np
-import networkx as nx
-import napari
-import random
-import os 
 
-# use PushButton itself as a recorder
+# use PushButton as a recorder of history
 class PushButton(widgets.PushButton):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -51,18 +50,18 @@ class Annotator:
 
     def add_control(self):
         # ----- napari bindings -----
-        self.viewer.bind_key('q', self.switch_mode,overwrite=True)
-        self.viewer.bind_key('r', self.recover,overwrite=True)
-        self.viewer.bind_key('g', self.switch_layer,overwrite=True)
+        self.viewer.bind_key('q', self.switch_mode, overwrite=True)
+        self.viewer.bind_key('r', self.recover, overwrite=True)
+        self.viewer.bind_key('g', self.switch_layer, overwrite=True)
         self.viewer.bind_key('d', self.refresh, overwrite=True)
-        self.viewer.bind_key('f', self.submit_result,overwrite=True)
-        self.viewer.bind_key('w', self.connect_one_nearest,overwrite=True)
-        self.viewer.bind_key('e', self.connect_two_nearest,overwrite=True)
-        self.viewer.bind_key('b', self.last_task,overwrite=True)
-        self.viewer.bind_key('s', self.label_soma,overwrite=True)
-        self.viewer.bind_key('a', self.label_ambiguous,overwrite=True)
-        self.viewer.bind_key('n', self.get_next_task,overwrite=True)
-        self.viewer.bind_key('i', self.deconvolve,overwrite=True)
+        self.viewer.bind_key('f', self.submit_result, overwrite=True)
+        self.viewer.bind_key('w', self.connect_one_nearest, overwrite=True)
+        self.viewer.bind_key('e', self.connect_two_nearest, overwrite=True)
+        self.viewer.bind_key('b', self.last_task, overwrite=True)
+        self.viewer.bind_key('s', self.label_soma, overwrite=True)
+        self.viewer.bind_key('a', self.label_ambiguous, overwrite=True)
+        self.viewer.bind_key('n', self.get_next_task, overwrite=True)
+        self.viewer.bind_key('i', self.deconvolve, overwrite=True)
 
         self.panorama_points.mouse_drag_callbacks.append(self.node_selection)
         self.point_layer.mouse_drag_callbacks.append(self.node_operations)
@@ -71,7 +70,6 @@ class Annotator:
 
         # ----- widgets -----
         self.user_name = widgets.LineEdit(label="user name", value='tester')
-        self.image_type = widgets.CheckBox(value=False,text='read uncompressed zarr format')
         self.image_path = widgets.FileEdit(label="image path", mode='r')
         self.db_path = widgets.FileEdit(label="database path",filter='*.db')
 
@@ -80,10 +78,10 @@ class Annotator:
         self.segs_switch = widgets.CheckBox(value=True,text='show/hide long segments')
         self.refresh_panorama_button = widgets.PushButton(text="refresh panorama")
 
-        self.min_length = widgets.Slider(label="min_length", value=10, min=0, max=200)
+        self.min_length = widgets.Slider(label="short segs filter", value=10, min=0, max=200)
         self.len_thres = widgets.Slider(label="length thres", value=20, min=0, max=9999)
-        self.min_size = widgets.Slider(label="min size", value=3, min=0, max=10)
-        self.max_size = widgets.Slider(label="max size", value=5, min=1, max=20)
+        self.point_size = widgets.Slider(label="point size", value=3, min=1, max=10)
+
         self.mode_switch = PushButton(text="switch mode (q)")
         self.mode_switch.mode = 'panorama'
         self.selected_node = widgets.LineEdit(label="node selection", value=0)
@@ -92,7 +90,8 @@ class Annotator:
         self.nodes_left = widgets.LineEdit(label="nodes left", value=0)
         self.image_size = widgets.Slider(label="block size", value=64, min=64, max=1024)
         self.refresh_button = widgets.PushButton(text="refresh (d)")
-        self.return_button = widgets.PushButton(text="shit I misclicked (b)")
+        self.deconv_button = widgets.PushButton(text="deconvolve (i)")
+        self.return_button = widgets.PushButton(text="last task (b)")
         self.recover_button = widgets.PushButton(text="recover (r)")
         self.submit_button = PushButton(text="submit (f)")
         self.submit_button.history = []
@@ -104,7 +103,6 @@ class Annotator:
         # ---------------------------
 
         # ----- widgets bindings -----
-        self.image_type.changed.connect(self.switch_image_type)
         self.proofreading_switch.changed.connect(self.on_proofreading_mode_change)
         self.submit_button.clicked.connect(self.submit_result)
         self.refresh_panorama_button.clicked.connect(self.refresh_panorama)
@@ -119,6 +117,7 @@ class Annotator:
         self.deconv_path.changed.connect(self.load_deconver)
         self.image_path.changed.connect(self.on_reading_image)
         self.db_path.changed.connect(self.on_reading_db)
+        self.deconv_button.clicked.connect(self.deconvolve)
         # ---------------------------
 
         # ------load default deconver-----
@@ -130,7 +129,6 @@ class Annotator:
 
         self.container = widgets.Container(widgets=[
             self.user_name,
-            self.image_type,
             self.image_path,
             self.db_path,
             self.deconv_path,
@@ -138,8 +136,7 @@ class Annotator:
             self.segs_switch,
             self.min_length,
             self.len_thres,
-            self.min_size,
-            self.max_size,
+            self.point_size,
             self.refresh_panorama_button,
             self.mode_switch,
             self.selected_node,
@@ -151,6 +148,7 @@ class Annotator:
             self.refresh_button,
             self.return_button,
             self.recover_button,
+            self.deconv_button,
             self.soma_buttom,
             self.ambiguous_button,
             self.next_task_button,
@@ -173,13 +171,6 @@ class Annotator:
         self.refresh(self.viewer,keep_image=True)
     
 
-    def switch_image_type(self,event):
-        if event:
-            self.image_path.mode = 'd'
-        else:
-            self.image_path.mode = 'r'
-
-
     def load_deconver(self):
         self.deconver = Deconver(str(self.deconv_path.value))
         show_info("Deconvolution model loaded")
@@ -191,11 +182,15 @@ class Annotator:
             sr_img = self.deconver.process_one(self.image_layer.data)
             self.image_layer.data = sr_img
             self.refresh(self.viewer,keep_image=True)
+        else:
+            show_info("this image is too large, try a smaller one")
 
 
     def get_next_task(self,viewer):
         # find the largest unchecked component, set one of its endings selected node.
-
+        if self.mode_switch.value == 'panorama':
+            show_info("switch to labeling mode first")
+            return
         nodes_left = [
             node for node in self.G.nodes
             if (self.G.nodes[node]['checked'] == -1) or (self.G.degree(node) == 1 and self.G.nodes[node]['checked'] == 0)
@@ -297,7 +292,7 @@ class Annotator:
 
 
     def switch_mode(self,viewer):
-        if self.mode_switch.mode == 'panorama':
+        if self.mode_switch.mode == 'panorama' and int(self.selected_node.value) in self.G.nodes:
             self.mode_switch.mode = 'labeling'
             self.panorama_points.visible = False
             self.panorama_image.visible = False
@@ -307,7 +302,7 @@ class Annotator:
             self.ex_edge_layer.visible = True
             self.viewer.camera.zoom = 5
             self.refresh(self.viewer,keep_image=False)
-        else:
+        elif self.mode_switch.mode == 'labeling':
             # remove current recordings
             self.submit_result(self.viewer)
             self.mode_switch.mode = 'panorama'
@@ -318,6 +313,8 @@ class Annotator:
             }
             self.added_nodes = []
             self.refresh_panorama()
+        else:
+            show_info("select a node before switching to labeling mode")
 
 
     def switch_layer(self,viewer):
@@ -365,7 +362,6 @@ class Annotator:
             dis.append(nx.shortest_path_length(self.G, source=int(self.selected_node.value), target=nid))
         unchecked_nodes = [x for _,x in sorted(zip(dis,unchecked_nodes))]
         
-
         self.update_meter(len(connected_component),len(unchecked_nodes))
 
         if len(unchecked_nodes)==0 and self.proofreading_switch.value == False:
@@ -634,7 +630,7 @@ class Annotator:
                 coords.append(node['coord'])
                 nids.append(node['nid'])
                 colors.append(color)
-                sizes.append(len(nodes))
+                sizes.append(self.point_size.value)
 
         if len(sizes)==0:
             show_info("No segment in range")
@@ -644,10 +640,6 @@ class Annotator:
         colors = (colors-np.min(colors))/(np.max(colors)-np.min(colors))
         colors = np.nan_to_num(colors, nan=0.5)
         sizes = np.array(sizes)
-        sizes = (sizes-np.min(sizes))/(np.max(sizes)-np.min(sizes))*10
-        sizes = np.nan_to_num(sizes, nan=10)
-        sizes = np.clip(sizes,int(self.min_size.value),int(self.max_size.value))
-
 
         properties = {
             'colors': colors,
@@ -655,7 +647,6 @@ class Annotator:
         }
         
         camera_center  = [i + j//2 for i,j in zip(self.image.roi[0:3],self.image.roi[3:])]
-
 
         self.panorama_points.visible = True
         self.panorama_points.data = np.array(coords)
@@ -738,102 +729,101 @@ class Annotator:
             mode = 'proofreading' if self.proofreading_switch.value == True else 'labeling'
         
         operation = (event.button, mode, modifier)
-        
-        match operation:
-            case (1, 'proofreading', None): # switch center node
-                self.selected_node.value = str(node_id)
-                self.refresh(self.viewer,keep_image=False)
 
-            case (2, 'proofreading', None): # label node as unchecked
-                if self.G.nodes[node_id]['checked'] == -1:
-                    self.G.nodes[node_id]['checked'] = 0
+
+        if operation == (1, 'proofreading', None): # switch center node
+            self.selected_node.value = str(node_id)
+            self.refresh(self.viewer,keep_image=False)
+
+        elif operation == (2, 'proofreading', None): # label node as unchecked
+            if self.G.nodes[node_id]['checked'] == -1:
+                self.G.nodes[node_id]['checked'] = 0
+            else:
+                self.G.nodes[node_id]['checked'] = -1
+                self.refresh(self.viewer)
+
+        elif operation == (1, 'labeling', None): # add/remove edge
+            if node_id not in self.connected_nodes:
+                self.connected_nodes.append(node_id)
+            elif node_id in self.connected_nodes:
+                self.connected_nodes.remove(node_id)
+            # refresh edge layer
+            self.refresh_edge_layer()
+
+        elif operation == (2, 'labeling', None): # remove node and its edges
+            current_cc = nx.node_connected_component(self.G, int(self.selected_node.value))
+            if len(current_cc)==1:
+                if node_id in self.added_nodes:
+                    self.added_nodes.remove(node_id)
                 else:
-                    self.G.nodes[node_id]['checked'] = -1
-                    self.refresh(self.viewer)
-
-            case (1, 'labeling', None): # add/remove edge
-                if node_id not in self.connected_nodes:
-                    self.connected_nodes.append(node_id)
-                elif node_id in self.connected_nodes:
-                    self.connected_nodes.remove(node_id)
-                # refresh edge layer
-                self.refresh_edge_layer()
-
-            case (2, 'labeling', None): # remove node and its edges
-                current_cc = nx.node_connected_component(self.G, int(self.selected_node.value))
-                if len(current_cc)==1:
-                    if node_id in self.added_nodes:
-                        self.added_nodes.remove(node_id)
-                    else:
-                        self.delected['nodes'].append(self.G.nodes[node_id])
-
-                    self.rtree.delete(node_id,tuple(self.G.nodes[node_id]['coord']+self.G.nodes[node_id]['coord']))
-                    self.G.remove_node(node_id)
-                    if node_id in self.connected_nodes:
-                        self.connected_nodes.remove(node_id)
-
-                    self.get_next_task(self.viewer)
-                    return
-                if node_id not in current_cc:
-                    # preserve the delected node, until next submit
-                    if node_id in self.added_nodes:
-                        self.added_nodes.remove(node_id)
-                    else:
-                        self.delected['nodes'].append(self.G.nodes[node_id])
-                    for nbr in self.G.neighbors(node_id):
-                        self.delected['edges'].append([node_id,nbr])
-                        # after removing, label its neighbors as unchecked
-                        self.G.nodes[nbr]['checked'] = 0
-
-                    self.rtree.delete(node_id,tuple(self.G.nodes[node_id]['coord']+self.G.nodes[node_id]['coord']))
-                    self.G.remove_node(node_id)
-
-                    if node_id in self.connected_nodes:
-                        self.connected_nodes.remove(node_id)
-                    
-                    self.refresh_edge_layer()
-                    self.refresh(self.viewer)
-
-                else:
-                    # cut current_cc, select the largest subgraph
                     self.delected['nodes'].append(self.G.nodes[node_id])
-                    # center node is not removed, keep it unchecked
-                    self.G.nodes[node_id]['checked']-=1
-                    nbrs = list(self.G.neighbors(node_id))
-                    for nbr in nbrs:
-                        self.delected['edges'].append([node_id,nbr])
-                        self.G.nodes[nbr]['checked'] = 0
-                    self.rtree.delete(node_id,tuple(self.G.nodes[node_id]['coord']+self.G.nodes[node_id]['coord']))
-                    self.G.remove_node(node_id)
-                    if node_id in self.connected_nodes:
-                        self.connected_nodes.remove(node_id)
 
-                    l_size = 0
-                    for nbr in nbrs:
-                        length = len(nx.node_connected_component(self.G,nbr))
-                        if length>l_size:
-                            self.selected_node.value = str(nbr)
-                            l_size = length
+                self.rtree.delete(node_id,tuple(self.G.nodes[node_id]['coord']+self.G.nodes[node_id]['coord']))
+                self.G.remove_node(node_id)
+                if node_id in self.connected_nodes:
+                    self.connected_nodes.remove(node_id)
 
-                    self.refresh_edge_layer()
-                    self.refresh(self.viewer)
+                self.get_next_task(self.viewer)
+                return
+            if node_id not in current_cc:
+                # preserve the delected node, until next submit
+                if node_id in self.added_nodes:
+                    self.added_nodes.remove(node_id)
+                else:
+                    self.delected['nodes'].append(self.G.nodes[node_id])
+                for nbr in self.G.neighbors(node_id):
+                    self.delected['edges'].append([node_id,nbr])
+                    # after removing, label its neighbors as unchecked
+                    self.G.nodes[nbr]['checked'] = 0
 
+                self.rtree.delete(node_id,tuple(self.G.nodes[node_id]['coord']+self.G.nodes[node_id]['coord']))
+                self.G.remove_node(node_id)
 
-            case (1, 'labeling', 'Shift'): # switch center node
-                self.connected_nodes = []
-                self.selected_node.value = str(node_id)
-                if self.G.nodes[node_id]['checked'] >= 0:
-                    self.G.nodes[node_id]['checked'] = -1
+                if node_id in self.connected_nodes:
+                    self.connected_nodes.remove(node_id)
+                
                 self.refresh_edge_layer()
-                self.refresh(self.viewer,keep_image=False)
-            
+                self.refresh(self.viewer)
 
-            case _ :
-                show_info("operation not supported")
+            else:
+                # cut current_cc, select the largest subgraph
+                self.delected['nodes'].append(self.G.nodes[node_id])
+                # center node is not removed, keep it unchecked
+                self.G.nodes[node_id]['checked']-=1
+                nbrs = list(self.G.neighbors(node_id))
+                for nbr in nbrs:
+                    self.delected['edges'].append([node_id,nbr])
+                    self.G.nodes[nbr]['checked'] = 0
+                self.rtree.delete(node_id,tuple(self.G.nodes[node_id]['coord']+self.G.nodes[node_id]['coord']))
+                self.G.remove_node(node_id)
+                if node_id in self.connected_nodes:
+                    self.connected_nodes.remove(node_id)
+
+                l_size = 0
+                for nbr in nbrs:
+                    length = len(nx.node_connected_component(self.G,nbr))
+                    if length>l_size:
+                        self.selected_node.value = str(nbr)
+                        l_size = length
+
+                self.refresh_edge_layer()
+                self.refresh(self.viewer)
+
+
+        elif operation == (1, 'labeling', 'Shift'): # switch center node
+            self.connected_nodes = []
+            self.selected_node.value = str(node_id)
+            if self.G.nodes[node_id]['checked'] >= 0:
+                self.G.nodes[node_id]['checked'] = -1
+            self.refresh_edge_layer()
+            self.refresh(self.viewer,keep_image=False)
+        
+        else:
+            show_info("operation not supported")
 
 
     def put_point(self,layer,event):
-        # add new node to self.G and self.add_nodes
+        # add new node to self.G and self.added_nodes
         if(event.button==2):
             near_point, far_point = layer.get_ray_intersections(
                 event.position,

@@ -217,7 +217,7 @@ class SimpleViewer:
             image_name = f'img_{next_image_number}.tif'
             image_name = os.path.join(self.save_dir.value, image_name)
 
-            imwrite(image_name,img)
+            imwrite(image_name, img, compression='zlib', compressionargs={'level': 8})
 
             print(image_name+' saved')
 

@@ -93,8 +93,8 @@ def gen_dataset(source_dir, out_dir, n_fg, n_bg):
         image_path = os.path.join(img_dir, 'img_'+str(i+1)+'.tif')
         mask_path = os.path.join(mask_dir, 'mask_'+str(i+1)+'.tif')
 
-        imwrite(image_path,matched,dtype=np.uint16)
-        imwrite(mask_path,mask,dtype=np.uint8)
+        imwrite(image_path, matched, dtype=np.uint16, compression='zlib', compressionargs={'level': 8})
+        imwrite(mask_path, mask, dtype=np.uint8, compression='zlib', compressionargs={'level': 8})
 
 
     image_paths = [os.path.join(bg_source_dir, filename) for filename in os.listdir(bg_source_dir) if '.tif' in filename]
@@ -115,7 +115,7 @@ def gen_dataset(source_dir, out_dir, n_fg, n_bg):
     n_bg = n_bg if n_bg<len(blocks) else len(blocks)
     for block in tqdm(blocks[:n_bg]):
         image_path = os.path.join(bg_dir, 'img_'+str(num)+'.tif')
-        imwrite(image_path,block,dtype=np.uint16)
+        imwrite(image_path, block, dtype=np.uint16, compression='zlib', compressionargs={'level': 8})
         num+=1
 
     print('finished')
@@ -137,11 +137,4 @@ def command_line_interface():
     print(f"number of foreground images: {args.n_fg}")
     print(f"number of background images: {args.n_bg}")
     gen_dataset(args.source,args.out,n_fg=args.n_fg,n_bg=args.n_bg)
-
-
-
-if __name__ == '__main__':
-    source_dir = '/home/bean/workspace/data/seg_datasets/rm009_sr_labeled/'
-    out_dir = '/home/bean/workspace/data/seg_datasets/rm009_sr_aug/'
-    gen_dataset(source_dir,out_dir,N=2048)
 

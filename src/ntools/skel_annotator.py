@@ -187,7 +187,6 @@ class Annotator:
         directory, image_name = os.path.split(image_path)
         mask_name = image_name.replace('img_','mask_')
 
-
         image = self.image_layer.data
         path = sum(self.labeled_path,[])
         coordinates = np.array(path)
@@ -196,11 +195,8 @@ class Annotator:
             mask[coordinates[:, 0], coordinates[:, 1], coordinates[:, 2]] = 1
 
         mask_path = os.path.join(directory, mask_name)
-
-        imwrite(mask_path,mask,dtype=np.uint8)
-
-        print(mask_path+' saved')
-
+        imwrite(mask_path, mask, dtype=np.uint8, compression='zlib', compressionargs={'level': 8})
+        print(mask_path + ' saved')
 
 
 def main():
