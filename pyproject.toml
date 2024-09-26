@@ -36,8 +36,15 @@ dependencies = [
 [project.optional-dependencies]
 # Add optional dependencies if needed (e.g., gui = ["package_for_gui"])
 
+[tool.setuptools.packages.find]
+include = ["neurofly", "neurofly.*"]
+
+
+[tool.setuptools.package-data]
+"napari_config" = ["*.yaml"]
+
 [project.entry-points."napari.manifest"]
-neurofly_annotator = "neurofly:napari.yaml"
+neurofly = "neurofly:napari.yaml"
 
 # Entry points for console scripts (from setup.py)
 [project.scripts]
@@ -48,8 +55,7 @@ seg = "neurofly.seger:command_line_interface"
 aug = "neurofly.aug_segs:command_line_interface"
 interp = "neurofly.interp_edges:command_line_interface"
 
-[tool.setuptools.packages.find]
-include = ["neurofly", "neurofly.*"]
+
 
 [build-system]
 requires = ["setuptools>=42", "wheel"]
