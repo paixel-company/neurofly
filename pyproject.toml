@@ -40,6 +40,9 @@ dependencies = [
 include = ["neurofly", "neurofly.*"]
 
 
+[options.packages.find]
+where = "neurofly"
+
 [tool.setuptools.package-data]
 "napari_config" = ["*.yaml"]
 
