@@ -11,7 +11,4 @@ dist
 build
 __pythran__/
 .coverage
-tests/
 test/
-src/weights/
-# src/ntools/models/mpcn*.pth

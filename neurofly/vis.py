@@ -1,7 +1,7 @@
 import numpy as np
 import random
 import networkx as nx
-from ntools.dbio import read_nodes,read_edges
+from neurofly.dbio import read_nodes,read_edges
 
 
 def draw_frame(roi,viewer,width=1,color='blue',scale=[1,1,1]):

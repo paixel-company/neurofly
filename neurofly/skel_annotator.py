@@ -6,24 +6,27 @@ from tifffile import imread, imwrite
 from magicgui import widgets
 
 
-class Annotator:
-    def __init__(self):
-        self.viewer = napari.Viewer(ndisplay=3,title='instance annotator')
+class Annotator(widgets.Container):
+    def __init__(self, viewer: napari.Viewer):
+        super().__init__()
+        self.viewer = viewer
+        self.viewer.dims.ndisplay = 3
+        self.viewer.layers.clear()
+        self.viewer.window.remove_dock_widget('all')
         self.image_layer = self.viewer.add_image(np.zeros((64, 64, 64), dtype=np.uint16),name='image')
         self.start_layer = self.viewer.add_points(ndim=3,face_color='cyan',size=2,edge_color='black',shading='spherical',name='start')
-        self.goal_layer = self.viewer.add_points(ndim=3,face_color='red',size=2,edge_color='black',shading='spherical',name='goal')
-        self.path_layer = self.viewer.add_points(ndim=3,face_color='green',size=1,edge_color='black',shading='spherical',name='path')
-        self.labeled_layer = self.viewer.add_points(ndim=3,size=0.8,edge_color='black',shading='spherical',face_colormap='turbo',name='saved labels')
+        self.goal_layer = self.viewer.add_points(ndim=3,face_color='red',size=2,shading='spherical',name='goal')
+        self.path_layer = self.viewer.add_points(ndim=3,face_color='green',size=1,shading='spherical',name='path')
+        self.labeled_layer = self.viewer.add_points(ndim=3,size=0.8,shading='spherical',face_colormap='turbo',name='saved labels')
         self.labeled_path = []
         self.add_callback()
-        napari.run()
 
 
     def add_callback(self):
-        self.viewer.bind_key('f', self.find_path)
-        self.viewer.bind_key('r', self.delete_one_path)
-        self.viewer.bind_key('d', self.delete_current_path)
-        self.viewer.bind_key('s', self.save_current_path)
+        self.viewer.bind_key('f', self.find_path, overwrite=True)
+        self.viewer.bind_key('r', self.delete_one_path, overwrite=True)
+        self.viewer.bind_key('d', self.delete_current_path, overwrite=True)
+        self.viewer.bind_key('s', self.save_current_path, overwrite=True)
         self.image_layer.mouse_double_click_callbacks.append(self.on_double_click)
 
         self.button0 = widgets.PushButton(text="refresh")
@@ -40,8 +43,15 @@ class Annotator:
         self.button5.clicked.connect(self.save_mask)
 
         self.image_path = widgets.FileEdit(label="image_path")
-        self.container = widgets.Container(widgets=[self.image_path, self.button0,self.button5,self.button1,self.button2,self.button3,self.button4])
-        self.viewer.window.add_dock_widget(self.container, area='right')
+        self.extend([
+            self.image_path,
+            self.button0,
+            self.button5,
+            self.button1,
+            self.button2,
+            self.button3,
+            self.button4
+            ])
 
 
     def save_current_path(self,viewer):
@@ -200,7 +210,10 @@ class Annotator:
 
 
 def main():
-    anno = Annotator()
+    viewer = napari.Viewer(ndisplay=3,title='skeleton annotator')
+    anno = Annotator(viewer)
+    napari.run()
+
 
 
 if __name__ == '__main__':

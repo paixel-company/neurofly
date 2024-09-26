@@ -2,22 +2,24 @@ import numpy as np
 import napari
 import os
 from magicgui import magicgui, widgets
-from ntools.image_reader import wrap_image
+from neurofly.image_reader import wrap_image
 from tifffile import imwrite
 
 
-
-class SimpleViewer:
-    def __init__(self):
-        self.viewer = napari.Viewer(ndisplay=3,title='simple viewer')
+class SimpleViewer(widgets.Container):
+    def __init__(self, viewer: napari.Viewer):
+        super().__init__()
+        self.viewer = viewer
+        self.viewer.dims.ndisplay = 3
+        self.viewer.layers.clear()
+        self.viewer.window.remove_dock_widget('all')
         self.image_layer = self.viewer.add_image(np.zeros((64, 64, 64), dtype=np.uint16),name='image')
-        self.goal_layer = self.viewer.add_points(ndim=3,face_color='red',size=2,edge_color='black',shading='spherical',name='goal')
+        self.goal_layer = self.viewer.add_points(ndim=3,face_color='red',size=2,shading='spherical',name='goal')
         self.add_callback()
         self.image = None
-        napari.run()
 
     def add_callback(self):
-        self.viewer.bind_key('f', self.refresh)
+        self.viewer.bind_key('f', self.refresh, overwrite=True)
         self.image_layer.mouse_double_click_callbacks.append(self.on_double_click)
 
         self.image_type = widgets.CheckBox(value=False,text='read zarr format')
@@ -47,8 +49,27 @@ class SimpleViewer:
         self.patchify = widgets.CheckBox(value=False, text='patchify to 128')
         self.level = widgets.LineEdit(label="level",value=0)
         self.level_info = widgets.TextEdit(label='level info')
-        self.container = widgets.Container(widgets=[self.image_type, self.image_path, self.save_dir,self.clip,self.x_size,self.y_size,self.z_size,self.x, self.y, self.z, self.level, self.level_info, self.patchify, self.button3, self.button1, self.button2,self.button4, self.button0])
-        self.viewer.window.add_dock_widget(self.container, area='right')
+
+        self.extend([
+            self.image_type,
+            self.image_path,
+            self.save_dir,
+            self.clip,
+            self.x_size,
+            self.y_size,
+            self.z_size,
+            self.x,
+            self.y,
+            self.z,
+            self.level,
+            self.level_info,
+            self.patchify,
+            self.button3,
+            self.button1,
+            self.button2,
+            self.button4,
+            self.button0
+            ])
 
         self.image_path.changed.connect(self.on_image_reading)
         self.image_type.changed.connect(self.switch_image_type)
@@ -223,7 +244,9 @@ class SimpleViewer:
 
 
 def main():
-    viewer = SimpleViewer()
+    viewer = napari.Viewer(ndisplay=3,title='simple viewer')
+    smple_viewer = SimpleViewer(viewer)
+    napari.run()
 
 
 if __name__ == '__main__':

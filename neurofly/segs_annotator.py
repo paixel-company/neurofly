@@ -3,11 +3,11 @@ import networkx as nx
 import napari
 import random
 import os
-from ntools.dbio import read_edges, read_nodes, add_nodes, add_edges, check_node, uncheck_nodes, change_type, delete_nodes
+from neurofly.dbio import read_edges, read_nodes, add_nodes, add_edges, check_node, uncheck_nodes, change_type, delete_nodes
 from magicgui import widgets
-from ntools.image_reader import wrap_image
+from neurofly.image_reader import wrap_image
 from napari.utils.notifications import show_info
-from ntools.models.mpcn_tinygrad import Deconver
+from neurofly.models.mpcn_tinygrad import Deconver
 from rtree import index
 from tqdm import tqdm
 
@@ -17,10 +17,14 @@ class PushButton(widgets.PushButton):
         super().__init__(*args, **kwargs)
 
 
-class Annotator:
-    def __init__(self):
+class Annotator(widgets.Container):
+    def __init__(self, viewer: napari.Viewer):
+        super().__init__()
         # --------- GUI ---------
-        self.viewer = napari.Viewer(ndisplay=3, title='Segs Annotator')
+        self.viewer = viewer
+        self.viewer.dims.ndisplay = 3
+        self.viewer.layers.clear()
+        self.viewer.window.remove_dock_widget('all')
         # panorama mode
         self.panorama_image = self.viewer.add_image(np.ones((64, 64, 64), dtype=np.uint16), name='panorama image',visible=False)
         self.panorama_points = self.viewer.add_points(None,ndim=3,size=None,shading='spherical',border_width=0,properties=None,face_colormap='hsl',name='panorama view',blending='additive',visible=True)
@@ -28,7 +32,7 @@ class Annotator:
         self.image_layer = self.viewer.add_image(np.ones((64, 64, 64), dtype=np.uint16),name='image',visible=False)
         self.point_layer = self.viewer.add_points(None,ndim=3,size=None,shading='spherical',border_width=0,properties=None,face_colormap='hsl',name='points',visible=False)
         self.edge_layer = self.viewer.add_vectors(None,ndim=3,name='added edges',vector_style='triangle',visible=False)
-        self.ex_edge_layer = self.viewer.add_vectors(None,ndim=3,name='existing edges',vector_style='line',visible=False,edge_color='orange',edge_width=0.3,opacity=1)
+        self.ex_edge_layer = self.viewer.add_vectors(None,ndim=3,name='existing edges',vector_style='line',visible=False,edge_width=0.3,opacity=1)
         # ------------------------
 
         self.add_control() # control panel
@@ -45,7 +49,6 @@ class Annotator:
         }
         self.added_nodes = []
         # ----------------------------------
-        napari.run()
 
 
     def add_control(self):
@@ -127,7 +130,7 @@ class Annotator:
             self.deconv_path.value = weight_path
         # ---------------------------
 
-        self.container = widgets.Container(widgets=[
+        self.extend([
             self.user_name,
             self.image_path,
             self.db_path,
@@ -153,10 +156,7 @@ class Annotator:
             self.ambiguous_button,
             self.next_task_button,
             self.submit_button
-            ])
-
-        self.viewer.window.add_dock_widget(self.container, area='right')
-    
+        ])
 
     def on_reading_image(self):
         self.image = wrap_image(str(self.image_path.value))
@@ -303,8 +303,6 @@ class Annotator:
             self.viewer.camera.zoom = 5
             self.refresh(self.viewer,keep_image=False)
         elif self.mode_switch.mode == 'labeling':
-            # remove current recordings
-            self.submit_result(self.viewer)
             self.mode_switch.mode = 'panorama'
             self.connected_nodes = []
             self.delected = {
@@ -582,8 +580,7 @@ class Annotator:
             # read image
             self.image = wrap_image(str(self.image_path.value))
         
-        # load low reslotion image if exists ('ims' file format)
-        if 'ims' in str(self.image_path.value) and (self.panorama_image.scale == np.array([1,1,1])).all() and self.image_switch.value == True:
+        if ('ims' in str(self.image_path.value) or 'zarr.zip' in str(self.image_path.value)) and (self.panorama_image.scale == np.array([1,1,1])).all() and self.image_switch.value == True:
             # iterate levels, find one that has proper size
             level = 0
             for i, roi in enumerate(self.image.rois):
@@ -865,8 +862,9 @@ class Annotator:
     
 
 def main():
-    anno = Annotator()
-
+    viewer = napari.Viewer(ndisplay=3, title='Segs Annotator')
+    Annotator(viewer)
+    napari.run()
 
 if __name__ == '__main__':
     main()

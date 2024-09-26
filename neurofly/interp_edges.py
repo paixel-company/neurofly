@@ -1,7 +1,7 @@
 import numpy as np
 import argparse
-from ntools.dbio import read_nodes, get_edges_by, add_edges, add_nodes, get_max_nid, delete_edges
-from ntools.image_reader import wrap_image
+from neurofly.dbio import read_nodes, get_edges_by, add_edges, add_nodes, get_max_nid, delete_edges
+from neurofly.image_reader import wrap_image
 from brightest_path_lib.algorithm import NBAStarSearch
 from tqdm import tqdm
 

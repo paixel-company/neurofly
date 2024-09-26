@@ -7,21 +7,21 @@ from scipy.spatial.distance import cdist
 from skimage.morphology import skeletonize
 from skimage.measure import label, regionprops
 from tqdm import tqdm
-from ntools.patch import patchify_without_splices, get_patch_rois
-from ntools.dbio import segs2db
-from ntools.image_reader import wrap_image
-from ntools.vis import show_segs_as_instances, show_segs_as_paths
+from neurofly.patch import patchify_without_splices, get_patch_rois
+from neurofly.dbio import segs2db
+from neurofly.image_reader import wrap_image
+from neurofly.vis import show_segs_as_instances, show_segs_as_paths
 
 
 class Seger():
     def __init__(self,ckpt_path,bg_thres):
         # if nvidia gpu is available, use pytorch to inference, else use tinygrad
         if torch.cuda.is_available():
-            from ntools.models.unet_torch import SegNet
-            from ntools.models.mpcn_torch import Deconver
+            from neurofly.models.unet_torch import SegNet
+            from neurofly.models.mpcn_torch import Deconver
         else:
-            from ntools.models.unet_tinygrad import SegNet
-            from ntools.models.mpcn_tinygrad import Deconver
+            from neurofly.models.unet_tinygrad import SegNet
+            from neurofly.models.mpcn_tinygrad import Deconver
         self.seg_net = SegNet(ckpt_path,bg_thres)
         # border width (128-100)//2
         self.bw = 14
@@ -90,7 +90,6 @@ class Seger():
             large_mask[roi[0]:roi[0]+roi[3],roi[1]:roi[1]+roi[4],roi[2]:roi[2]+roi[5]] = mask
         processed_mask = self.postprocess(large_mask)
         return processed_mask[border_size:-border_size,border_size:-border_size,border_size:-border_size]
-
 
 
     def mask_to_segs(self, mask, offset=[0,0,0]):
@@ -210,9 +209,9 @@ class Seger():
 def command_line_interface():
     package_dir = os.path.dirname(os.path.abspath(__file__))
     parser = argparse.ArgumentParser(description="args for seger")
-    parser.add_argument('--weight_path', '-w',type=str, default=None, help="path to weight of the segmentation model")
-    parser.add_argument('--image_path', '-i',type=str, help="path to the input image, only zarr, ims, tif are currently supported")
-    parser.add_argument('--db_path', '-d',type=str, default=None, help="path to the output database file")
+    parser.add_argument('--weight_path', '-w', type=str, default=None, help="path to weight of the segmentation model")
+    parser.add_argument('--image_path', '-i', type=str, help="path to the input image, only zarr, ims, tif are currently supported")
+    parser.add_argument('--db_path', '-d', type=str, default=None, help="path to the output database file")
     parser.add_argument('-roi', type=int, nargs='+', default=None, help="image roi, if kept None, process the whole image")
     parser.add_argument('-bg_thres', type=int, default=150, help="ignore images with maximum intensity smaller than this")
     parser.add_argument('-chunk_size', type=int, default=300, help="image size for skeletonization")

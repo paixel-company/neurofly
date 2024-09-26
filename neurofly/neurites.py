@@ -1,8 +1,8 @@
 import networkx as nx
 import numpy as np
 from scipy.spatial import KDTree
-from ntools.dbio import read_edges, read_nodes, uncheck_nodes
-from ntools.image_reader import wrap_image
+from neurofly.dbio import read_edges, read_nodes, uncheck_nodes
+from neurofly.image_reader import wrap_image
 from rtree import index
 from tqdm import tqdm
 from brightest_path_lib.algorithm import AStarSearch
