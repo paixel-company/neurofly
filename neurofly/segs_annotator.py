@@ -859,12 +859,4 @@ class Annotator(widgets.Container):
 
             self.refresh(self.viewer)
             self.viewer.layers.selection.active = self.image_layer
-    
 
-def main():
-    viewer = napari.Viewer(ndisplay=3, title='Segs Annotator')
-    Annotator(viewer)
-    napari.run()
-
-if __name__ == '__main__':
-    main()

@@ -42,7 +42,7 @@ Morphology labels are graphs saved in SQLite database with 3 tables:
 Segments are results of the segmentation stage, they are used to generate initial nodes and edges.
 
 
-## Minimal Usage Example
+## Basic usage example
 
 <img src="assets/pipeline.png" width="480">
 
@@ -58,10 +58,10 @@ seg -i z002.ims -vis -d z002.db
 Then you should see the extracted segments and a z002.db file in your working dictionary.
 
 
-### Manual Proofreading
+### Manual proofreading
 Then skip the connection stage (algorithm is in development) and manually proofread the result. 
 
-Launch segs_annotator using command line interface 'segs_annotator' or from napari menu, Plugin -> neurofly -> Segs Annotator
+Launch annotation tool from napari menu, Plugin -> neurofly -> Segs Annotator
 
 #### Load data
 Load image file (z002.ims) and database file (z002.db), then click 'refresh panorama' button to show the panorama view.

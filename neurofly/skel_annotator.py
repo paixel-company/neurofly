@@ -207,14 +207,3 @@ class Annotator(widgets.Container):
         mask_path = os.path.join(directory, mask_name)
         imwrite(mask_path, mask, dtype=np.uint8, compression='zlib', compressionargs={'level': 8})
         print(mask_path + ' saved')
-
-
-def main():
-    viewer = napari.Viewer(ndisplay=3,title='skeleton annotator')
-    anno = Annotator(viewer)
-    napari.run()
-
-
-
-if __name__ == '__main__':
-    main()

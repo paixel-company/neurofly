@@ -242,12 +242,3 @@ class SimpleViewer(widgets.Container):
 
             print(image_name+' saved')
 
-
-def main():
-    viewer = napari.Viewer(ndisplay=3,title='simple viewer')
-    smple_viewer = SimpleViewer(viewer)
-    napari.run()
-
-
-if __name__ == '__main__':
-    main()

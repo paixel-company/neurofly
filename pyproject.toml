@@ -51,13 +51,9 @@ neurofly = "neurofly:napari.yaml"
 
 # Entry points for console scripts (from setup.py)
 [project.scripts]
-segs_annotator = "neurofly.segs_annotator:main"
-simple_viewer = "neurofly.simple_viewer:main"
-skel_annotator = "neurofly.skel_annotator:main"
 seg = "neurofly.seger:command_line_interface"
 aug = "neurofly.aug_segs:command_line_interface"
 interp = "neurofly.interp_edges:command_line_interface"
-
 
 
 [build-system]
