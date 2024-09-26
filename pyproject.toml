@@ -49,7 +49,7 @@ aug = "neurofly.aug_segs:command_line_interface"
 interp = "neurofly.interp_edges:command_line_interface"
 
 [tool.setuptools.packages.find]
-include = ["neurofly"]
+include = ["neurofly", "neurofly.*"]
 
 [build-system]
 requires = ["setuptools>=42", "wheel"]
