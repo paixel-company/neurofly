@@ -40,10 +40,11 @@ class Annotator(widgets.Container):
         # --------- data structure ---------
         self.image = None
         self.G = None # networkx graph
-        p = index.Property(dimension=3)
-        self.rtree = index.Index(properties=p)
+        self.rtree = None
+        # p = index.Property(dimension=3)
+        # self.rtree = index.Index(properties=p)
         self.connected_nodes = []
-        self.delected = {
+        self.deleted = {
             'nodes': [],
             'edges': []
         }
@@ -61,10 +62,11 @@ class Annotator(widgets.Container):
         self.viewer.bind_key('w', self.connect_one_nearest, overwrite=True)
         self.viewer.bind_key('e', self.connect_two_nearest, overwrite=True)
         self.viewer.bind_key('b', self.last_task, overwrite=True)
-        self.viewer.bind_key('s', self.label_soma, overwrite=True)
+        self.viewer.bind_key('l', self.label_soma, overwrite=True)
         self.viewer.bind_key('a', self.label_ambiguous, overwrite=True)
         self.viewer.bind_key('n', self.get_next_task, overwrite=True)
         self.viewer.bind_key('i', self.deconvolve, overwrite=True)
+        self.viewer.bind_key('c', self.purge, overwrite=True)
 
         self.panorama_points.mouse_drag_callbacks.append(self.node_selection)
         self.point_layer.mouse_drag_callbacks.append(self.node_operations)
@@ -99,10 +101,11 @@ class Annotator(widgets.Container):
         self.submit_button = PushButton(text="submit (f)")
         self.submit_button.history = []
         self.proofreading_switch = widgets.CheckBox(value=False,text='Proofreading')
-        self.soma_buttom = widgets.PushButton(text="label/unlabel soma (s)")
+        self.soma_buttom = widgets.PushButton(text="label/unlabel soma (l)")
         self.ambiguous_button = widgets.PushButton(text="label/unlabel ambiguous (a)")
         # next task is just ask for new task without submitting
         self.next_task_button = widgets.PushButton(text="get next task (n)")
+        self.purge_button = widgets.PushButton(text="purge block (c)")
         # ---------------------------
 
         # ----- widgets bindings -----
@@ -121,6 +124,7 @@ class Annotator(widgets.Container):
         self.image_path.changed.connect(self.on_reading_image)
         self.db_path.changed.connect(self.on_reading_db)
         self.deconv_button.clicked.connect(self.deconvolve)
+        self.purge_button.clicked.connect(self.purge)
         # ---------------------------
 
         # ------load default deconver-----
@@ -154,6 +158,7 @@ class Annotator(widgets.Container):
             self.deconv_button,
             self.soma_buttom,
             self.ambiguous_button,
+            self.purge_button,
             self.next_task_button,
             self.submit_button
         ])
@@ -186,6 +191,30 @@ class Annotator(widgets.Container):
             show_info("this image is too large, try a smaller one")
 
 
+    def purge(self,viewer):
+        selection = int(self.selected_node.value)
+        c_coord = self.G.nodes[selection]['coord']
+
+        h_size = self.image_size.value//2
+        # query a larger block
+        query_box = (c_coord[0]-h_size-10,c_coord[1]-h_size-10,c_coord[2]-h_size-10,c_coord[0]+h_size+20,c_coord[1]+h_size+20,c_coord[2]+h_size+20)
+        nbrs = list(self.rtree.intersection(query_box, objects=False))
+        nbrs = nbrs + self.added_nodes
+        sub_g = self.G.subgraph(nbrs)
+        connected_components = list(nx.connected_components(sub_g))
+        nodes_to_remove = []
+        for cc in connected_components:
+            if len(cc) <= 4 and selection not in cc:
+                nodes_to_remove += cc
+        for node in nodes_to_remove:
+            self.deleted['nodes'].append(self.G.nodes[node])
+            for nbr in self.G.neighbors(node):
+                self.deleted['edges'].append([node,nbr])
+            self.rtree.delete(node, tuple(self.G.nodes[node]['coord']+self.G.nodes[node]['coord']))
+            self.G.remove_node(node)
+        self.refresh(self.viewer, keep_image=True)
+
+
     def get_next_task(self,viewer):
         # find the largest unchecked component, set one of its endings selected node.
         if self.mode_switch.value == 'panorama':
@@ -215,7 +244,7 @@ class Annotator(widgets.Container):
 
         self.selected_node.value = str(unchecked_nodes[0])
         self.connected_nodes = []
-        self.delected = {
+        self.deleted = {
             'nodes': [],
             'edges': []
         }
@@ -305,7 +334,7 @@ class Annotator(widgets.Container):
         elif self.mode_switch.mode == 'labeling':
             self.mode_switch.mode = 'panorama'
             self.connected_nodes = []
-            self.delected = {
+            self.deleted = {
                 'nodes': [],
                 'edges': []
             }
@@ -329,7 +358,7 @@ class Annotator(widgets.Container):
             self.selected_node.value = str(last_node)
             self.connected_nodes = []
             self.added_nodes = []
-            self.delected = {
+            self.deleted = {
                 'nodes': [],
                 'edges': []
             }
@@ -363,7 +392,7 @@ class Annotator(widgets.Container):
         self.update_meter(len(connected_component),len(unchecked_nodes))
 
         if len(unchecked_nodes)==0 and self.proofreading_switch.value == False:
-            show_info('all nodes checked, run proofreading')
+            show_info('all nodes checked, proofread or get next task')
             unchecked_nodes.append(int(self.selected_node.value))
 
         if self.proofreading_switch.value == False:
@@ -462,14 +491,14 @@ class Annotator(widgets.Container):
 
 
     def recover(self, viewer):
-        # recover the preserved delected nodes if exists
-        for node in self.delected['nodes']:
+        # recover the preserved deleted nodes if exists
+        for node in self.deleted['nodes']:
             self.G.add_node(node['nid'], nid = node['nid'],coord = node['coord'], type = node['type'], checked = 0, creator = self.user_name.value)
             self.rtree.insert(node['nid'], tuple(node['coord']+node['coord']))
-        for edge in self.delected['edges']:
+        for edge in self.deleted['edges']:
             self.G.add_edge(edge[0],edge[1])
 
-        self.delected = {
+        self.deleted = {
             'nodes': [],
             'edges': []
         }
@@ -494,7 +523,7 @@ class Annotator(widgets.Container):
         # label the center node of current task as checked in self.G
         # update canvas and local graph
         # run refresh to updata canvas
-        self.delected = {
+        self.deleted = {
             'nodes': [],
             'edges': []
         }
@@ -512,12 +541,12 @@ class Annotator(widgets.Container):
 
 
     def update_database(self):
-        # update database according to 'delected_nodes', 'added_nodes', 'connected_nodes'
+        # update database according to 'deleted_nodes', 'added_nodes', 'connected_nodes'
         # deleted_nodes['nodes']: [{'nid','coord','type','checked'}]
         # deleted_nodes['edges']: [[src,tar]]
         # added_nodes: [{'nid','coord','type','checked'}]
         # connected_nodes: [nid,nid,...]
-        # 1. remove nodes and edges in delected_nodes
+        # 1. remove nodes and edges in deleted_nodes
         # 2. add new nodes to database
         # 3. add new edges to database
         path = str(self.db_path.value)
@@ -531,7 +560,7 @@ class Annotator(widgets.Container):
             uncheck_nodes(path,nids)
         else:
             deleted_nodes = []
-            for node in self.delected['nodes']:
+            for node in self.deleted['nodes']:
                 deleted_nodes.append(node['nid'])
 
             if len(deleted_nodes)>0:
@@ -565,15 +594,17 @@ class Annotator(widgets.Container):
             show_info('switch to panorama mode first')
             return
         if self.G is None:
+            p = index.Property(dimension=3)
             # load graph and rtree from database
             nodes = read_nodes(self.db_path.value)
             edges = read_edges(self.db_path.value)
             self.G = nx.Graph()
             print("loading nodes")
-            for node in tqdm(nodes):
+            rtree_data = []
+            for node in nodes:
                 self.G.add_node(node['nid'], nid = node['nid'], coord = node['coord'], type = node['type'], checked = node['checked'], creator = node['creator'])
-                self.rtree.insert(node['nid'], tuple(node['coord']+node['coord']))
-
+                rtree_data.append((node['nid'], tuple(node['coord']+node['coord']),None))
+            self.rtree = index.Index(rtree_data, properties=p)
             for edge in edges:
                 self.G.add_edge(edge['src'],edge['des'],creator = edge['creator'])
 
@@ -753,9 +784,9 @@ class Annotator(widgets.Container):
                 if node_id in self.added_nodes:
                     self.added_nodes.remove(node_id)
                 else:
-                    self.delected['nodes'].append(self.G.nodes[node_id])
+                    self.deleted['nodes'].append(self.G.nodes[node_id])
 
-                self.rtree.delete(node_id,tuple(self.G.nodes[node_id]['coord']+self.G.nodes[node_id]['coord']))
+                self.rtree.delete(node_id, tuple(self.G.nodes[node_id]['coord']+self.G.nodes[node_id]['coord']))
                 self.G.remove_node(node_id)
                 if node_id in self.connected_nodes:
                     self.connected_nodes.remove(node_id)
@@ -763,17 +794,17 @@ class Annotator(widgets.Container):
                 self.get_next_task(self.viewer)
                 return
             if node_id not in current_cc:
-                # preserve the delected node, until next submit
+                # preserve the deleted node, until next submit
                 if node_id in self.added_nodes:
                     self.added_nodes.remove(node_id)
                 else:
-                    self.delected['nodes'].append(self.G.nodes[node_id])
+                    self.deleted['nodes'].append(self.G.nodes[node_id])
                 for nbr in self.G.neighbors(node_id):
-                    self.delected['edges'].append([node_id,nbr])
+                    self.deleted['edges'].append([node_id,nbr])
                     # after removing, label its neighbors as unchecked
                     self.G.nodes[nbr]['checked'] = 0
 
-                self.rtree.delete(node_id,tuple(self.G.nodes[node_id]['coord']+self.G.nodes[node_id]['coord']))
+                self.rtree.delete(node_id, tuple(self.G.nodes[node_id]['coord']+self.G.nodes[node_id]['coord']))
                 self.G.remove_node(node_id)
 
                 if node_id in self.connected_nodes:
@@ -784,12 +815,12 @@ class Annotator(widgets.Container):
 
             else:
                 # cut current_cc, select the largest subgraph
-                self.delected['nodes'].append(self.G.nodes[node_id])
+                self.deleted['nodes'].append(self.G.nodes[node_id])
                 # center node is not removed, keep it unchecked
                 self.G.nodes[node_id]['checked']-=1
                 nbrs = list(self.G.neighbors(node_id))
                 for nbr in nbrs:
-                    self.delected['edges'].append([node_id,nbr])
+                    self.deleted['edges'].append([node_id,nbr])
                     self.G.nodes[nbr]['checked'] = 0
                 self.rtree.delete(node_id,tuple(self.G.nodes[node_id]['coord']+self.G.nodes[node_id]['coord']))
                 self.G.remove_node(node_id)
@@ -821,7 +852,7 @@ class Annotator(widgets.Container):
 
     def put_point(self,layer,event):
         # add new node to self.G and self.added_nodes
-        if(event.button==2):
+        if(event.button==2 and self.proofreading_switch.value == False):
             near_point, far_point = layer.get_ray_intersections(
                 event.position,
                 event.view_direction,

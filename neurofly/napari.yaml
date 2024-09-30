@@ -12,6 +12,9 @@ contributions:
     - id: neurofly.skel_annotator
       title: Skeleton Annotator
       python_name: neurofly:SkelAnnotator
+    - id: neurofly.neuron_seger
+      title: Neuron Seger
+      python_name: neurofly:NeuronSeger
   widgets:
     - command: neurofly.segs_annotator
       display_name: Segs Annotator
@@ -19,3 +22,5 @@ contributions:
       display_name: Simple Viewer
     - command: neurofly.skel_annotator
       display_name: Skeleton Annotator
+    - command: neurofly.neuron_seger
+      display_name: Neuron Seger

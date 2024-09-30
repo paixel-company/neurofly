@@ -61,8 +61,7 @@ def show_segs_as_instances(segs,viewer,size=0.8):
     print(f'num of segs (length >= 2): {num_segs}')
     print(f'num of branch points: {num_branches}')
     print(f'num of points: {len(points)}')
-    point_layer = viewer.add_points(np.array(points),ndim=3,face_color='colors',size=size,edge_color='colors',shading='spherical',edge_width=0,properties=properties,face_colormap='turbo')
-
+    point_layer = viewer.add_points(np.array(points),ndim=3,face_color='colors',size=size,border_color='colors',shading='spherical',border_width=0,properties=properties,face_colormap='turbo')
 
 
 def show_segs_as_paths(segs,viewer,width=1):

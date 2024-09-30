@@ -231,7 +231,6 @@ class Tiff():
     def __init__(self,tiff_path):
         self.image = np.squeeze(imread(tiff_path))
         self.roi = [0,0,0] + list(self.image.shape)
-        print(f'Image ROI: {self.roi[0:3]} to {[i+j for i,j in zip(self.roi[0:3],self.roi[3:6])]}')
         self.shape = self.roi[3:6]
     
     def __getitem__(self, indices):

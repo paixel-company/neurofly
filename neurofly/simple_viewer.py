@@ -42,11 +42,10 @@ class SimpleViewer(widgets.Container):
         self.x_size.changed.connect(self.clip_x)
         self.y_size.changed.connect(self.clip_y)
         self.z_size.changed.connect(self.clip_z)
-        self.x = widgets.LineEdit(label="x offset", value=5280)
-        self.y = widgets.LineEdit(label="y offset", value=4000)
-        self.z = widgets.LineEdit(label="z offset", value=8480)
+        self.x = widgets.LineEdit(label="x offset", value=0)
+        self.y = widgets.LineEdit(label="y offset", value=0)
+        self.z = widgets.LineEdit(label="z offset", value=0)
         self.clip = widgets.CheckBox(value=False, text='clip slide bars')
-        self.patchify = widgets.CheckBox(value=False, text='patchify to 128')
         self.level = widgets.LineEdit(label="level",value=0)
         self.level_info = widgets.TextEdit(label='level info')
 
@@ -63,7 +62,6 @@ class SimpleViewer(widgets.Container):
             self.z,
             self.level,
             self.level_info,
-            self.patchify,
             self.button3,
             self.button1,
             self.button2,
@@ -219,26 +217,13 @@ class SimpleViewer(widgets.Container):
 
     def save_image(self, viewer):
         image = self.image_layer.data
-        patches = []
-        if self.patchify.value == True:
-            depth, height, width = image.shape
-            patch_depth, patch_height, patch_width = [128,128,128]
-            for d in range(0, depth, patch_depth):
-                for h in range(0, height, patch_height):
-                    for w in range(0, width, patch_width):
-                        patch = image[d:d + patch_depth, h:h + patch_height, w:w + patch_width]
-                        patches.append(patch)
-        else:
-            patches.append(image)
-        
-        for img in patches:
-            all_files = os.listdir(self.save_dir.value)
-            tif_files = [file for file in all_files if file.endswith('.tif')]
-            next_image_number = len(tif_files)+1
-            image_name = f'img_{next_image_number}.tif'
-            image_name = os.path.join(self.save_dir.value, image_name)
+        all_files = os.listdir(self.save_dir.value)
+        tif_files = [file for file in all_files if file.endswith('.tif')]
+        next_image_number = len(tif_files)+1
+        image_name = f'img_{next_image_number}.tif'
+        image_name = os.path.join(self.save_dir.value, image_name)
 
-            imwrite(image_name, img, compression='zlib', compressionargs={'level': 8})
+        imwrite(image_name, image, compression='zlib', compressionargs={'level': 8})
 
-            print(image_name+' saved')
+        print(image_name+' saved')
 

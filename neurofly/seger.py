@@ -3,25 +3,30 @@ import torch
 import argparse
 import numpy as np
 import networkx as nx
+import napari
 from scipy.spatial.distance import cdist
 from skimage.morphology import skeletonize
 from skimage.measure import label, regionprops
 from tqdm import tqdm
+from magicgui import widgets
 from neurofly.patch import patchify_without_splices, get_patch_rois
 from neurofly.dbio import segs2db
 from neurofly.image_reader import wrap_image
-from neurofly.vis import show_segs_as_instances, show_segs_as_paths
+from neurofly.vis import show_segs_as_instances, show_segs_as_paths, draw_frame
+from napari.utils.notifications import show_info
+from napari.qt.threading import thread_worker
+
+if torch.cuda.is_available():
+    from neurofly.models.unet_torch import SegNet
+    from neurofly.models.mpcn_torch import Deconver
+else:
+    from neurofly.models.unet_tinygrad import SegNet
+    from neurofly.models.mpcn_tinygrad import Deconver
 
 
 class Seger():
-    def __init__(self,ckpt_path,bg_thres):
+    def __init__(self,ckpt_path,bg_thres=200):
         # if nvidia gpu is available, use pytorch to inference, else use tinygrad
-        if torch.cuda.is_available():
-            from neurofly.models.unet_torch import SegNet
-            from neurofly.models.mpcn_torch import Deconver
-        else:
-            from neurofly.models.unet_tinygrad import SegNet
-            from neurofly.models.mpcn_tinygrad import Deconver
         self.seg_net = SegNet(ckpt_path,bg_thres)
         # border width (128-100)//2
         self.bw = 14
@@ -185,11 +190,15 @@ class Seger():
         else:
             image_roi = roi
         rois = patchify_without_splices(image_roi,[chunk_size,chunk_size,chunk_size],splices=splice)
+        num_rois = len(rois)
         # pad rois
         segs = []
         for roi in tqdm(rois):
-            if roi[3:]==[128,128,128]:
-                mask = self.seg_net.get_mask(image.from_roi(roi))
+            if (np.array(roi[3:])<=np.array([128,128,128])).all():
+                img = image.from_roi(roi)
+                if dec is not None:
+                    img = dec.process_one(img)
+                mask = self.seg_net.get_mask(img)
                 offset = roi[:3]
             else:
                 roi[:3] = [i-self.bw for i in roi[:3]]
@@ -199,7 +208,201 @@ class Seger():
                 offset=[i+self.bw for i in roi[:3]]
             _, segs_in_block = self.mask_to_segs(mask,offset=offset)
             segs+=segs_in_block
-        
+
+        for i, seg in enumerate(segs):
+            seg['sid'] = i
+
+        return segs
+
+
+
+class SegerGUI(widgets.Container):
+    def __init__(self, viewer: napari.Viewer):
+        super().__init__()
+        self.viewer = viewer
+        self.viewer.dims.ndisplay = 3
+        self.viewer.layers.clear()
+        self.viewer.window.remove_dock_widget('all')
+        self.seger = None
+        self.deconver = None
+        self.add_callback()
+
+    def add_callback(self):
+        self.image_type = widgets.CheckBox(value=False,text='read zarr format')
+        self.image_path = widgets.FileEdit(label="image_path")
+        self.save_dir = widgets.FileEdit(label="save dir",mode='w')
+        self.x_size = widgets.Slider(label="x size", value=0, min=0, max=100000)
+        self.y_size = widgets.Slider(label="y size", value=0, min=0, max=100000)
+        self.z_size = widgets.Slider(label="z size", value=0, min=0, max=100000)
+        self.x = widgets.LineEdit(label="x offset", value=0)
+        self.y = widgets.LineEdit(label="y offset", value=0)
+        self.z = widgets.LineEdit(label="z offset", value=0)
+        self.chunk_size = widgets.LineEdit(label="chunk size", value=300)
+        self.splices = widgets.LineEdit(label="z-splice", value=100000) 
+        self.run_button = widgets.PushButton(text="run segmentation")
+        self.run_button.clicked.connect(self.start_segmentation)
+        self.seger_weight_path = widgets.FileEdit(label="seger weight")
+        self.deconver_weight_path = widgets.FileEdit(label="deconver weight")
+        self.use_deconv = widgets.CheckBox(value=False,text='deconvolve before segment')
+        self.progress_bar = widgets.ProgressBar(min=0, max=100, value=0)
+
+        package_dir = os.path.dirname(os.path.abspath(__file__))
+        seger_weight_path = os.path.join(package_dir,'models/universal_tiny.pth')
+        deconver_weight_path = os.path.join(package_dir,'models/mpcn_dumpy.pth')
+        self.image_path.changed.connect(self.on_image_reading)
+        self.image_type.changed.connect(self.switch_image_type)
+        self.seger_weight_path.changed.connect(self.load_seger)
+        self.deconver_weight_path.changed.connect(self.load_deconver)
+        self.seger_weight_path.value = seger_weight_path
+        self.deconver_weight_path.value = deconver_weight_path
+
+
+        self.extend([
+            self.image_type,
+            self.image_path,
+            self.seger_weight_path,
+            self.deconver_weight_path,
+            self.save_dir,
+            self.x_size,
+            self.y_size,
+            self.z_size,
+            self.x,
+            self.y,
+            self.z,
+            self.splices,
+            self.chunk_size,
+            self.use_deconv,
+            self.run_button,
+            self.progress_bar
+            ])
+
+
+    def switch_image_type(self,event):
+        if event:
+            self.image_path.mode = 'd'
+        else:
+            self.image_path.mode = 'r'
+
+
+    def on_image_reading(self):
+        self.image = wrap_image(str(self.image_path.value))
+        x_offset,y_offset,z_offset,x_size,y_size,z_size = self.image.roi
+        self.x.value = x_offset
+        self.y.value = y_offset
+        self.z.value = z_offset
+        self.x_size.max = x_size
+        self.y_size.max = y_size
+        self.z_size.max = z_size
+        self.x_size.value = x_size
+        self.y_size.value = y_size
+        self.z_size.value = z_size
+        draw_frame(self.image.roi, self.viewer, color='white')
+
+
+    def load_deconver(self):
+        self.deconver = Deconver(str(self.deconver_weight_path.value))
+        show_info("Deconvolution model loaded")
+
+
+    def load_seger(self):
+        self.seger = Seger(str(self.seger_weight_path.value))
+        show_info("Segmentation model loaded")
+
+
+    def start_segmentation(self):
+        # Disable the run button to prevent multiple clicks
+        self.run_button.enabled = False
+
+        # Start the segmentation in a background thread
+        worker = self.process_whole()
+        worker.yielded.connect(self.update_progress)
+        worker.returned.connect(self.on_segmentation_finished)
+        worker.finished.connect(self.on_task_finished)
+        worker.start()
+
+
+    def update_progress(self, value):
+        (current, whole, segs_in_block) = value
+        self.progress_bar.max = whole
+        self.progress_bar.value = current
+        points_in_block = []
+        for seg in segs_in_block:
+            points_in_block += seg['sampled_points']
+        if len(points_in_block) == 0:
+            return
+        points_array = np.array(points_in_block)
+        if not hasattr(self, 'points_layer') or self.points_layer is None:
+            self.points_layer = self.viewer.add_points(
+                points_array,
+                size=2,
+                face_color='orange',
+                name='neurite points'
+            )
+        else:
+            existing_data = self.points_layer.data
+            updated_data = np.concatenate((existing_data, points_array), axis=0)
+            self.points_layer.data = updated_data
+
+
+    def on_task_finished(self):
+        self.run_button.enabled = True
+
+    def on_segmentation_finished(self, segs):
+        db_path = str(self.save_dir.value)
+        if db_path != '.':
+            print(f"Saving {len(segs)} segments to {db_path}")
+            segs2db(segs, db_path)
+
+        seg_points = [seg['sampled_points'] for seg in segs]
+        show_segs_as_instances(seg_points, self.viewer)
+        self.viewer.layers.remove(self.points_layer)
+        self.points_layer = None
+
+    @thread_worker()
+    def process_whole(self):
+        # Extract parameters from widgets
+        roi = [
+            int(self.x.value), int(self.y.value), int(self.z.value),
+            int(self.x_size.value), int(self.y_size.value), int(self.z_size.value)
+        ]
+        image_path = str(self.image_path.value)
+        splice = int(self.splices.value)
+        chunk_size = int(self.chunk_size.value)
+        if chunk_size > splice:
+            show_info(f"can't use chunk size {chunk_size} for it is larger than splice {splice}")
+            chunk_size = splice
+        dec = self.deconver if self.use_deconv.value else None
+
+        image = wrap_image(image_path)
+        image_roi = roi if roi else image.roi
+
+        rois = patchify_without_splices(image_roi, [chunk_size] * 3, splices=splice)
+        total_rois = len(rois)
+
+        segs = []
+
+        for idx, roi in enumerate(rois):
+            if (np.array(roi[3:]) <= np.array([128, 128, 128])).all():
+                img = image.from_roi(roi)
+                if dec is not None:
+                    img = dec.process_one(img)
+                mask = self.seger.seg_net.get_mask(img)
+                offset = roi[:3]
+            else:
+                bw = self.seger.bw
+                roi_padded = [
+                    roi[0] - bw, roi[1] - bw, roi[2] - bw,
+                    roi[3] + 2 * bw, roi[4] + 2 * bw, roi[5] + 2 * bw
+                ]
+                padded_block = image.from_roi(roi_padded, padding='reflect')
+                mask = self.seger.get_large_mask(padded_block, dec)
+                offset = [roi[0], roi[1], roi[2]]
+
+            _, segs_in_block = self.seger.mask_to_segs(mask, offset=offset)
+            segs += segs_in_block
+
+            yield (idx+1, total_rois, segs_in_block)
+
         for i, seg in enumerate(segs):
             seg['sid'] = i
 

@@ -3,7 +3,9 @@
 
 ## Installation 
 
+```
 pip install --upgrade git+https://github.com/beanli161514/neurofly.git
+```
 
 ## Dataset
 
@@ -64,8 +66,11 @@ Then skip the connection stage (algorithm is in development) and manually proofr
 Launch annotation tool from napari menu, Plugin -> neurofly -> Segs Annotator
 
 #### Load data
-Load image file (z002.ims) and database file (z002.db), then click 'refresh panorama' button to show the panorama view.
+Load image file (z002.ims) and database file (z002.db), then click **refresh panorama** button to show the panorama view.
 
 <img src="assets/overall.png" width="600">
 
-In panorama mode, you can easily identify sparse, bright signals that are promising for reconstruction.
+
+#### Select one node as start point of annotation
+In panorama mode, you can easily identify sparse, bright signals that are promising for reconstruction. Click on one of the conspicuous segments to select it as start point of annotation. Once selected, the id of picked node will be displayed at **node selection**. 
+
