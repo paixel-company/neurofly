@@ -2,14 +2,12 @@ import numpy as np
 import networkx as nx
 import napari
 import random
-import os
 from neurofly.dbio import read_edges, read_nodes, add_nodes, add_edges, check_node, uncheck_nodes, change_type, delete_nodes
 from magicgui import widgets
 from neurofly.image_reader import wrap_image
 from napari.utils.notifications import show_info
-from neurofly.models.mpcn_tinygrad import Deconver
 from rtree import index
-from tqdm import tqdm
+from neurofly.common import *
 
 # use PushButton as a recorder of history
 class PushButton(widgets.PushButton):
@@ -41,14 +39,14 @@ class Annotator(widgets.Container):
         self.image = None
         self.G = None # networkx graph
         self.rtree = None
-        # p = index.Property(dimension=3)
-        # self.rtree = index.Index(properties=p)
-        self.connected_nodes = []
         self.deleted = {
             'nodes': [],
             'edges': []
         }
-        self.added_nodes = []
+        self.added = {
+            'nodes': [],
+            'edges': []
+        }
         # ----------------------------------
 
 
@@ -127,18 +125,18 @@ class Annotator(widgets.Container):
         self.purge_button.clicked.connect(self.purge)
         # ---------------------------
 
-        # ------load default deconver-----
-        package_dir = os.path.dirname(os.path.abspath(__file__))
-        weight_path = str(os.path.join(package_dir,'models/mpcn_dumpy.pth'))
-        if os.path.exists(weight_path):
-            self.deconv_path.value = weight_path
+        # ------load default model weights-----
+        if os.path.exists(default_dec_weight_path):
+            self.deconv_path.value = default_dec_weight_path
+        if os.path.exists(default_dec_weight_path):
+            self.deconv_path.value = default_dec_weight_path
         # ---------------------------
 
         self.extend([
             self.user_name,
             self.image_path,
             self.db_path,
-            self.deconv_path,
+            # self.deconv_path,
             self.image_switch,
             self.segs_switch,
             self.min_length,
@@ -173,6 +171,7 @@ class Annotator(widgets.Container):
 
 
     def on_proofreading_mode_change(self):
+        self.recover(self.viewer)
         self.refresh(self.viewer,keep_image=True)
     
 
@@ -199,7 +198,7 @@ class Annotator(widgets.Container):
         # query a larger block
         query_box = (c_coord[0]-h_size-10,c_coord[1]-h_size-10,c_coord[2]-h_size-10,c_coord[0]+h_size+20,c_coord[1]+h_size+20,c_coord[2]+h_size+20)
         nbrs = list(self.rtree.intersection(query_box, objects=False))
-        nbrs = nbrs + self.added_nodes
+        nbrs = nbrs + self.added['nodes']
         sub_g = self.G.subgraph(nbrs)
         connected_components = list(nx.connected_components(sub_g))
         nodes_to_remove = []
@@ -243,12 +242,14 @@ class Annotator(widgets.Container):
             return
 
         self.selected_node.value = str(unchecked_nodes[0])
-        self.connected_nodes = []
         self.deleted = {
             'nodes': [],
             'edges': []
         }
-        self.added_nodes = []
+        self.added = {
+            'nodes': [],
+            'edges': []
+        }
         self.refresh_edge_layer()
         self.refresh(self.viewer,keep_image=False)
 
@@ -269,15 +270,15 @@ class Annotator(widgets.Container):
         if self.G.nodes[node_id]['type'] == 0:
             change_type(str(self.db_path.value),node_id,8)
             self.G.nodes[node_id]['type'] = 8
-            show_info("{node_id} labeled as ambiguous")
+            show_info(f"{node_id} labeled as ambiguous")
         elif self.G.nodes[node_id]['type'] == 8:
             change_type(str(self.db_path.value),node_id,0)
             self.G.nodes[node_id]['type'] = 0
-            show_info("{node_id} labeled as normal")
+            show_info(f"{node_id} labeled as normal")
 
 
     def connect_one_nearest(self,viewer):
-        # find one closest neighbour point, add it to self.connected_nodes
+        # find one closest neighbour point, connect it with center point
         selection = int(self.selected_node.value)
         c_coord = self.G.nodes[selection]['coord']
 
@@ -291,13 +292,13 @@ class Annotator(widgets.Container):
             nbr_coords = np.array([self.G.nodes[nid]['coord'] for nid in nbrs])
             distances = np.linalg.norm(nbr_coords - np.array(c_coord), axis=1)
             closest_indices = [nbrs[i] for i in np.argsort(distances)[:1]]
-            self.connected_nodes = closest_indices
+            self.added['edges'] = [[selection, int(closest_indices[0])]]
         self.refresh_edge_layer()
         self.refresh(self.viewer)
 
 
     def connect_two_nearest(self,viewer):
-        # find one closest neighbour point, add it to self.connected_nodes
+        # find one closest neighbour point, connect them with center point
         selection = int(self.selected_node.value)
         c_coord = self.G.nodes[selection]['coord']
         h_size = self.image_size.value//2
@@ -310,13 +311,14 @@ class Annotator(widgets.Container):
             nbr_coords = np.array([self.G.nodes[nid]['coord'] for nid in nbrs])
             distances = np.linalg.norm(nbr_coords - np.array(c_coord), axis=1)
             closest_indices = [nbrs[i] for i in np.argsort(distances)[:2]]
-            self.connected_nodes = closest_indices
+            self.added['edges'] = [[selection, int(closest_indices[0])],
+                                   [selection, int(closest_indices[1])]]
         self.refresh_edge_layer()
         self.refresh(self.viewer)
 
 
     def clip_value(self):
-        # image size should be integer multiples of 64
+        # image size should be multiples of 64
         self.image_size.value = (self.image_size.value//64)*64
 
 
@@ -332,13 +334,16 @@ class Annotator(widgets.Container):
             self.viewer.camera.zoom = 5
             self.refresh(self.viewer,keep_image=False)
         elif self.mode_switch.mode == 'labeling':
+            self.recover(self.viewer)
             self.mode_switch.mode = 'panorama'
-            self.connected_nodes = []
             self.deleted = {
                 'nodes': [],
                 'edges': []
             }
-            self.added_nodes = []
+            self.added = {
+                'nodes': [],
+                'edges': []
+            }
             self.refresh_panorama()
         else:
             show_info("select a node before switching to labeling mode")
@@ -352,19 +357,15 @@ class Annotator(widgets.Container):
     
 
     def last_task(self,viewer):
+        # discard all changes and rollback to last task
+        self.recover(self.viewer)
         if len(self.submit_button.history)>0:
             last_node = self.submit_button.history[-1]
             self.G.nodes[last_node]['checked'] = -1
             self.selected_node.value = str(last_node)
-            self.connected_nodes = []
-            self.added_nodes = []
-            self.deleted = {
-                'nodes': [],
-                'edges': []
-            }
             self.submit_button.history.remove(last_node)
             self.refresh_edge_layer()
-            self.refresh(self.viewer,keep_image=False)
+            self.refresh(self.viewer, keep_image=False)
         else:
             show_info("No history recorded")
 
@@ -403,8 +404,7 @@ class Annotator(widgets.Container):
             h_size = self.image_size.value//2
             query_box = (c_coord[0]-h_size,c_coord[1]-h_size,c_coord[2]-h_size,c_coord[0]+h_size,c_coord[1]+h_size,c_coord[2]+h_size)
             nbrs = list(self.rtree.intersection(query_box, objects=False))
-
-            nbrs = nbrs + self.added_nodes
+            nbrs = nbrs + self.added['nodes']
             sub_g = self.G.subgraph(nbrs)
             connected_components = list(nx.connected_components(sub_g))
         else:
@@ -461,18 +461,15 @@ class Annotator(widgets.Container):
 
         if keep_image == False:
             image = self.image.from_roi([i-self.image_size.value//2 for i in c_coord]+[self.image_size.value,self.image_size.value,self.image_size.value])
-
             translate = [int(i)-self.image_size.value//2 for i in c_coord]
-
             local_coords = np.array(coords) - np.array(translate)
-
             mask = np.all((local_coords>= np.array([0,0,0])) & (local_coords < np.array([self.image_size.value,self.image_size.value,self.image_size.value])), axis=1)
             local_coords = local_coords[mask]
             local_coords = local_coords.astype(int)
+            # adjust contrast limits according to intensity distribution of foreground points
             intensities = image[local_coords[:, 0], local_coords[:, 1], local_coords[:, 2]]
             mean_value = np.mean(intensities)
             std_value = np.std(intensities)
-
             self.image_layer.data = image
             self.image_layer.reset_contrast_limits()
             self.image_layer.contrast_limits = [min(mean_value//2,200),mean_value+std_value]
@@ -496,24 +493,30 @@ class Annotator(widgets.Container):
             self.G.add_node(node['nid'], nid = node['nid'],coord = node['coord'], type = node['type'], checked = 0, creator = self.user_name.value)
             self.rtree.insert(node['nid'], tuple(node['coord']+node['coord']))
         for edge in self.deleted['edges']:
-            self.G.add_edge(edge[0],edge[1])
+            self.G.add_edge(edge[0],edge[1],creator = self.user_name.value)
+
+        if len(self.added['nodes'])!=0:
+            for nid in self.added['nodes']:
+                self.rtree.delete(nid,tuple(self.G.nodes[nid]['coord']+self.G.nodes[nid]['coord']))
+            self.G.remove_nodes_from(self.added['nodes'])
 
         self.deleted = {
             'nodes': [],
             'edges': []
         }
 
-        if len(self.added_nodes)!=0:
-            for nid in self.added_nodes:
-                self.rtree.delete(nid,tuple(self.G.nodes[nid]['coord']+self.G.nodes[nid]['coord']))
-            self.G.remove_nodes_from(self.added_nodes)
-        self.added_nodes = []
-        self.connected_nodes = []
+        self.added = {
+            'nodes': [],
+            'edges': []
+        }
         self.refresh_edge_layer()
         self.refresh(self.viewer)
 
 
     def submit_result(self,viewer):
+        if self.mode_switch.mode != 'labeling':
+            show_info('switch to labeling mode first')
+            return
         self.submit_button.history.append(int(self.selected_node.value))
         self.update_database()
         self.update_local()
@@ -523,29 +526,30 @@ class Annotator(widgets.Container):
         # label the center node of current task as checked in self.G
         # update canvas and local graph
         # run refresh to updata canvas
+        for edge in self.added['edges']:
+            self.G.add_edge(edge[0],edge[1])
+
+        self.G.nodes[int(self.selected_node.value)]['checked']+=1
+
         self.deleted = {
             'nodes': [],
             'edges': []
         }
 
-        self.added_nodes = []
-
-        for node in self.connected_nodes:
-            self.G.add_edge(int(self.selected_node.value),node)
-
-        self.G.nodes[int(self.selected_node.value)]['checked']+=1
-
-        self.connected_nodes = []
+        self.added = {
+            'nodes': [],
+            'edges': []
+        }
         self.edge_layer.data = None
         self.refresh(self.viewer, keep_image=False)
 
 
     def update_database(self):
-        # update database according to 'deleted_nodes', 'added_nodes', 'connected_nodes'
-        # deleted_nodes['nodes']: [{'nid','coord','type','checked'}]
-        # deleted_nodes['edges']: [[src,tar]]
-        # added_nodes: [{'nid','coord','type','checked'}]
-        # connected_nodes: [nid,nid,...]
+        # update database according to self.delected and self.added
+        # deleted['nodes']: [{'nid','coord','creator','type','checked'}]
+        # deleted['edges']: [[src,tar]]
+        # added['nodes]: [{'nid','coord','creator','type','checked'}]
+        # added['edges']: [[src,tar]] 
         # 1. remove nodes and edges in deleted_nodes
         # 2. add new nodes to database
         # 3. add new edges to database
@@ -567,18 +571,14 @@ class Annotator(widgets.Container):
                 delete_nodes(path,deleted_nodes)
 
             added_nodes = []
-            for nid in self.added_nodes:
+            for nid in self.added['nodes']:
                 added_nodes.append(self.G.nodes[nid])
 
             if len(added_nodes)>0:
                 add_nodes(path,added_nodes)
 
-            added_edges = []
-            for node in self.connected_nodes:
-                added_edges.append([int(self.selected_node.value),int(node)])
-
-            if len(added_edges)>0:
-                add_edges(path,added_edges,self.user_name.value)
+            if len(self.added['edges'])>0:
+                add_edges(path,self.added['edges'],self.user_name.value)
 
             check_node(path,int(self.selected_node.value))
 
@@ -634,6 +634,14 @@ class Annotator(widgets.Container):
             self.panorama_image.visible = True
             self.panorama_image.reset_contrast_limits()
 
+
+        # show the number of unlabeled nodes
+        nodes_left = [
+            node for node in self.G.nodes
+            if (self.G.nodes[node]['checked'] == -1) or (self.G.degree(node) == 1 and self.G.nodes[node]['checked'] == 0)
+        ]
+        self.total_nodes_left.value = len(nodes_left)
+
         connected_components = list(nx.connected_components(self.G))
 
         coords = []
@@ -650,9 +658,12 @@ class Annotator(widgets.Container):
             color = random.random()
             # check empty nodes
             nodes = [self.G.nodes[i] for i in cc]
-            for nid,node in zip(list(cc),nodes):
+            for nid, node in zip(list(cc),nodes):
                 if node == {}:
-                    delete_nodes(str(self.db_path.value),[nid])
+                    try:
+                        delete_nodes(str(self.db_path.value),[nid])
+                    except:
+                        continue
                     self.G.remove_node(nid)
                     continue
                 coords.append(node['coord'])
@@ -715,13 +726,20 @@ class Annotator(widgets.Container):
 
 
     def refresh_edge_layer(self):
+        '''
+        refresh edge layer according to self.added['edges']
+        '''
         vectors = []
         p1 = self.G.nodes[int(self.selected_node.value)]['coord']
-        for pid in self.connected_nodes:
+        for [_, pid] in self.added['edges']:
             p2 = self.G.nodes[pid]['coord']
             v = [j-i for i,j in zip(p1,p2)]
             vectors.append([p1,v])
         self.edge_layer.data = np.array(vectors)
+
+
+    def seg_current_block(self, viewer):
+        pass
 
 
     def node_operations(self, layer, event):
@@ -747,7 +765,7 @@ class Annotator(widgets.Container):
         if index is None:
             return
         else:
-            node_id = self.point_layer.properties['nids'][index]
+            node_id = int(self.point_layer.properties['nids'][index])
             # some ugly code
             if 'Shift' in event.modifiers:
                 modifier = 'Shift'
@@ -757,6 +775,8 @@ class Annotator(widgets.Container):
             mode = 'proofreading' if self.proofreading_switch.value == True else 'labeling'
         
         operation = (event.button, mode, modifier)
+        c_node = int(self.selected_node.value)
+        connected_nbrs = [edge[1] for edge in self.added['edges']] 
 
 
         if operation == (1, 'proofreading', None): # switch center node
@@ -771,32 +791,32 @@ class Annotator(widgets.Container):
                 self.refresh(self.viewer)
 
         elif operation == (1, 'labeling', None): # add/remove edge
-            if node_id not in self.connected_nodes:
-                self.connected_nodes.append(node_id)
-            elif node_id in self.connected_nodes:
-                self.connected_nodes.remove(node_id)
+            if node_id not in connected_nbrs:
+                self.added['edges'].append([c_node, node_id])
+            else:
+                self.added['edges'].remove([c_node, node_id])
             # refresh edge layer
             self.refresh_edge_layer()
 
         elif operation == (2, 'labeling', None): # remove node and its edges
-            current_cc = nx.node_connected_component(self.G, int(self.selected_node.value))
+            current_cc = nx.node_connected_component(self.G, c_node)
             if len(current_cc)==1:
-                if node_id in self.added_nodes:
-                    self.added_nodes.remove(node_id)
+                if node_id in self.added['nodes']:
+                    self.added['nodes'].remove(node_id)
                 else:
                     self.deleted['nodes'].append(self.G.nodes[node_id])
 
                 self.rtree.delete(node_id, tuple(self.G.nodes[node_id]['coord']+self.G.nodes[node_id]['coord']))
                 self.G.remove_node(node_id)
-                if node_id in self.connected_nodes:
-                    self.connected_nodes.remove(node_id)
+                if node_id in connected_nbrs:
+                    self.added['edges'].remove([c_node, node_id])
 
                 self.get_next_task(self.viewer)
                 return
             if node_id not in current_cc:
                 # preserve the deleted node, until next submit
-                if node_id in self.added_nodes:
-                    self.added_nodes.remove(node_id)
+                if node_id in self.added['nodes']:
+                    self.added['nodes'].remove(node_id)
                 else:
                     self.deleted['nodes'].append(self.G.nodes[node_id])
                 for nbr in self.G.neighbors(node_id):
@@ -807,8 +827,8 @@ class Annotator(widgets.Container):
                 self.rtree.delete(node_id, tuple(self.G.nodes[node_id]['coord']+self.G.nodes[node_id]['coord']))
                 self.G.remove_node(node_id)
 
-                if node_id in self.connected_nodes:
-                    self.connected_nodes.remove(node_id)
+                if node_id in connected_nbrs:
+                    self.added['edges'].remove([c_node, node_id])
                 
                 self.refresh_edge_layer()
                 self.refresh(self.viewer)
@@ -824,8 +844,8 @@ class Annotator(widgets.Container):
                     self.G.nodes[nbr]['checked'] = 0
                 self.rtree.delete(node_id,tuple(self.G.nodes[node_id]['coord']+self.G.nodes[node_id]['coord']))
                 self.G.remove_node(node_id)
-                if node_id in self.connected_nodes:
-                    self.connected_nodes.remove(node_id)
+                if node_id in connected_nbrs:
+                    self.added['edges'].remove([c_node, node_id])
 
                 l_size = 0
                 for nbr in nbrs:
@@ -838,20 +858,20 @@ class Annotator(widgets.Container):
                 self.refresh(self.viewer)
 
 
-        elif operation == (1, 'labeling', 'Shift'): # switch center node
-            self.connected_nodes = []
+        elif operation == (1, 'labeling', 'Shift'): 
+            # discard all changes, then switch center node
+            self.recover(self.viewer)
             self.selected_node.value = str(node_id)
             if self.G.nodes[node_id]['checked'] >= 0:
                 self.G.nodes[node_id]['checked'] = -1
             self.refresh_edge_layer()
             self.refresh(self.viewer,keep_image=False)
-        
         else:
             show_info("operation not supported")
 
 
     def put_point(self,layer,event):
-        # add new node to self.G and self.added_nodes
+        # add new node to self.G and self.added['nodes']
         if(event.button==2 and self.proofreading_switch.value == False):
             near_point, far_point = layer.get_ray_intersections(
                 event.position,
@@ -880,14 +900,14 @@ class Annotator(widgets.Container):
             max_point = [i+int(j) for i,j in zip(max_point,self.image_layer.translate)]
 
             # get new node id
+            # TODO: replace integer node_id with uuid
             new_id = len(self.G)
             while self.G.has_node(new_id):
                 new_id+=1
             
             self.G.add_node(new_id, nid = new_id, coord = max_point, type = 0, checked = 0, creator = self.user_name.value)
             self.rtree.insert(new_id, tuple(max_point+max_point))
-            self.added_nodes.append(new_id)
+            self.added['nodes'].append(new_id)
 
             self.refresh(self.viewer)
             self.viewer.layers.selection.active = self.image_layer
-

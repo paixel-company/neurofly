@@ -1,5 +1,3 @@
-import os
-import torch
 import argparse
 import numpy as np
 import networkx as nx
@@ -15,18 +13,14 @@ from neurofly.image_reader import wrap_image
 from neurofly.vis import show_segs_as_instances, show_segs_as_paths, draw_frame
 from napari.utils.notifications import show_info
 from napari.qt.threading import thread_worker
+from neurofly.common import default_dec_weight_path, default_seger_weight_path
+from neurofly.common import SegNet, Deconver
 
-if torch.cuda.is_available():
-    from neurofly.models.unet_torch import SegNet
-    from neurofly.models.mpcn_torch import Deconver
-else:
-    from neurofly.models.unet_tinygrad import SegNet
-    from neurofly.models.mpcn_tinygrad import Deconver
+
 
 
 class Seger():
     def __init__(self,ckpt_path,bg_thres=200):
-        # if nvidia gpu is available, use pytorch to inference, else use tinygrad
         self.seg_net = SegNet(ckpt_path,bg_thres)
         # border width (128-100)//2
         self.bw = 14
@@ -180,7 +174,7 @@ class Seger():
 
 
 
-    def process_whole(self,image_path,chunk_size=300,splice=100000,roi=None,dec=None):
+    def process_whole(self,image_path,channel=0,chunk_size=300,splice=100000,roi=None,dec=None):
         '''
         cut whole brain image to [300,300,300] cubes without splices (z coordinates % 300 == 0)
         '''
@@ -195,7 +189,10 @@ class Seger():
         segs = []
         for roi in tqdm(rois):
             if (np.array(roi[3:])<=np.array([128,128,128])).all():
-                img = image.from_roi(roi)
+                if 'tif' in image_path:
+                    img = image.from_roi(roi,padding='reflect')
+                else:
+                    img = image.from_roi(roi,0,channel,padding='reflect') 
                 if dec is not None:
                     img = dec.process_one(img)
                 mask = self.seg_net.get_mask(img)
@@ -203,7 +200,10 @@ class Seger():
             else:
                 roi[:3] = [i-self.bw for i in roi[:3]]
                 roi[3:] = [i+self.bw*2 for i in roi[3:]]
-                padded_block = image.from_roi(roi,padding='reflect')
+                if 'tif' in image_path:
+                    padded_block = image.from_roi(roi,padding='reflect')
+                else:
+                    padded_block = image.from_roi(roi,0,channel,padding='reflect') 
                 mask = self.get_large_mask(padded_block,dec)
                 offset=[i+self.bw for i in roi[:3]]
             _, segs_in_block = self.mask_to_segs(mask,offset=offset)
@@ -237,6 +237,7 @@ class SegerGUI(widgets.Container):
         self.x = widgets.LineEdit(label="x offset", value=0)
         self.y = widgets.LineEdit(label="y offset", value=0)
         self.z = widgets.LineEdit(label="z offset", value=0)
+        self.channel = widgets.LineEdit(label="image channel", value=0)
         self.chunk_size = widgets.LineEdit(label="chunk size", value=300)
         self.splices = widgets.LineEdit(label="z-splice", value=100000) 
         self.run_button = widgets.PushButton(text="run segmentation")
@@ -246,9 +247,8 @@ class SegerGUI(widgets.Container):
         self.use_deconv = widgets.CheckBox(value=False,text='deconvolve before segment')
         self.progress_bar = widgets.ProgressBar(min=0, max=100, value=0)
 
-        package_dir = os.path.dirname(os.path.abspath(__file__))
-        seger_weight_path = os.path.join(package_dir,'models/universal_tiny.pth')
-        deconver_weight_path = os.path.join(package_dir,'models/mpcn_dumpy.pth')
+        seger_weight_path = default_seger_weight_path
+        deconver_weight_path = default_dec_weight_path
         self.image_path.changed.connect(self.on_image_reading)
         self.image_type.changed.connect(self.switch_image_type)
         self.seger_weight_path.changed.connect(self.load_seger)
@@ -270,6 +270,7 @@ class SegerGUI(widgets.Container):
             self.y,
             self.z,
             self.splices,
+            self.channel,
             self.chunk_size,
             self.use_deconv,
             self.run_button,
@@ -383,7 +384,7 @@ class SegerGUI(widgets.Container):
 
         for idx, roi in enumerate(rois):
             if (np.array(roi[3:]) <= np.array([128, 128, 128])).all():
-                img = image.from_roi(roi)
+                img = image.from_roi(roi,0,int(self.channel.value))
                 if dec is not None:
                     img = dec.process_one(img)
                 mask = self.seger.seg_net.get_mask(img)
@@ -394,7 +395,7 @@ class SegerGUI(widgets.Container):
                     roi[0] - bw, roi[1] - bw, roi[2] - bw,
                     roi[3] + 2 * bw, roi[4] + 2 * bw, roi[5] + 2 * bw
                 ]
-                padded_block = image.from_roi(roi_padded, padding='reflect')
+                padded_block = image.from_roi(roi_padded,0,int(self.channel.value),padding='reflect')
                 mask = self.seger.get_large_mask(padded_block, dec)
                 offset = [roi[0], roi[1], roi[2]]
 
@@ -410,7 +411,6 @@ class SegerGUI(widgets.Container):
 
 
 def command_line_interface():
-    package_dir = os.path.dirname(os.path.abspath(__file__))
     parser = argparse.ArgumentParser(description="args for seger")
     parser.add_argument('--weight_path', '-w', type=str, default=None, help="path to weight of the segmentation model")
     parser.add_argument('--image_path', '-i', type=str, help="path to the input image, only zarr, ims, tif are currently supported")
@@ -418,25 +418,26 @@ def command_line_interface():
     parser.add_argument('-roi', type=int, nargs='+', default=None, help="image roi, if kept None, process the whole image")
     parser.add_argument('-bg_thres', type=int, default=150, help="ignore images with maximum intensity smaller than this")
     parser.add_argument('-chunk_size', type=int, default=300, help="image size for skeletonization")
+    parser.add_argument('-channel', type=int, default=0, help="channel index of ims image")
     parser.add_argument('-splice', type=int, default=100000, help="set this value if your image contain splices at certain interval on z axis")
     parser.add_argument('-vis', action='store_true', default=False, help="whether to visualize result after segmentation")
     parser.add_argument('-path', action='store_true', default=True, help="whether to visualize result as paths")
     parser.add_argument('-deconv', action='store_true', default=False, help="deconvolve image before segmentation")
     args = parser.parse_args()
     if args.weight_path is None:
-        args.weight_path = os.path.join(package_dir,'models/universal_tiny.pth')
+        args.weight_path = default_seger_weight_path
 
     print(f"Using weight: {args.weight_path}")
     print(f"Processing image: {args.image_path}, roi: {args.roi}")
 
     seger = Seger(args.weight_path,bg_thres=args.bg_thres) # bg_thres is used to filter out empty image like image borders
     if args.deconv:
-        dec_weight_path = os.path.join(package_dir,'models/mpcn_dumpy.pth')
+        dec_weight_path = default_dec_weight_path
         deconver = Deconver(dec_weight_path)
     else:
         deconver = None
 
-    segs = seger.process_whole(args.image_path, chunk_size=args.chunk_size, splice=args.splice, roi=args.roi, dec=deconver)
+    segs = seger.process_whole(args.image_path, args.channel, chunk_size=args.chunk_size, splice=args.splice, roi=args.roi, dec=deconver)
 
     if args.db_path is not None:
         print(f"Saving {len(segs)} segs to {args.db_path}")
@@ -450,7 +451,7 @@ def command_line_interface():
         if args.roi is None:
             args.roi = image.roi
         if (np.array(args.roi[3:])<np.array([1024,1024,1024])).all():
-            img = image.from_roi(args.roi)
+            img = image.from_roi(args.roi,0,args.channel)
             image_layer = viewer.add_image(img)
             image_layer.translate = args.roi[0:3]
         else:

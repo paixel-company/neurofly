@@ -234,6 +234,9 @@ def add_nodes(path,nodes):
     conn = sqlite3.connect(path)
     cursor = conn.cursor()
     for node in nodes:
+        if type(node['nid']) != int:
+            print(f"{node} is illegal")
+            continue
         cursor.execute(f"INSERT INTO nodes (nid, coord, creator, status, type, date, checked) VALUES (?, ?, ?, ?, ?, ?, ?)",
                 (
                     node['nid'],
@@ -253,17 +256,33 @@ def add_edges(path, edges, user_name='somebody'):
     # given list of edges, write them to edges table
     # edges: [[src,tar]]
     undirected_edges = []
-    for [src,tar] in edges:
-        undirected_edges.append([src,tar])
-        undirected_edges.append([tar,src])
-
     conn = sqlite3.connect(path)
     cursor = conn.cursor()
 
+    for [src, tar] in edges:
+        if isinstance(src, int) and isinstance(tar, int):
+            cursor.execute("SELECT COUNT(*) FROM nodes WHERE nid = ?", (src,))
+            src_exists = cursor.fetchone()[0]
+
+            cursor.execute("SELECT COUNT(*) FROM nodes WHERE nid = ?", (tar,))
+            tar_exists = cursor.fetchone()[0]
+
+            if src_exists and tar_exists:
+                # Add undirected edges if both src and tar exist
+                undirected_edges.append([src, tar])
+                undirected_edges.append([tar, src])
+            else:
+                print(f"Either {src} or {tar} does not exist in the nodes table.")
+        else:
+            print(f"{[src, tar]} is illegal")
+
+    # Insert the valid undirected edges into the edges table
     for edge in undirected_edges:
-        cursor.execute(f"INSERT OR IGNORE INTO edges (src, des, date, creator) VALUES (?, ?, ?, ?)",
-                    (edge[0], edge[1], datetime.now(), user_name)
-                )
+        cursor.execute(
+            "INSERT OR IGNORE INTO edges (src, des, date, creator) VALUES (?, ?, ?, ?)",
+            (edge[0], edge[1], datetime.now(), user_name)
+        )
+
     conn.commit()
     conn.close()
 

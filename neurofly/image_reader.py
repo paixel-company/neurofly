@@ -12,33 +12,54 @@ class Ims():
     '''
     def __init__(self,ims_path):
         self.hdf = h5py.File(ims_path,'r')
-        level_keys = list(self.hdf['DataSet'].keys())
-        self.images = [self.hdf['DataSet'][key]['TimePoint 0']['Channel 0']['Data'] for key in level_keys]
         self.rois = []
         self.info = self.get_info()
         for i in self.info:
             self.rois.append(i['origin'] + i['data_shape'])
         self.roi = self.rois[0]
 
+        self.dataset = self.hdf.get('DataSet')
+        self.time_point_key = 'TimePoint 0'
+        self.resolution_levels = list(self.dataset.keys())
+        self.channels = self.list_channels(self.resolution_levels[0])
 
-    def __getitem__(self, indices, level=0):
+
+    def list_channels(self, resolution_level):
+        res_level = self.dataset.get(resolution_level)
+        if res_level is None:
+            raise KeyError(f"Resolution level '{resolution_level}' not found.")
+        
+        time_point_group = res_level.get(self.time_point_key)
+        if time_point_group is None:
+            raise KeyError(f"Time point '{self.time_point_key}' not found in resolution level '{resolution_level}'.")
+        
+        return list(time_point_group.keys())
+
+
+    def __getitem__(self, indices, level=0, channel=0):
         x_min, x_max = indices[0].start, indices[0].stop
         y_min, y_max = indices[1].start, indices[1].stop
         z_min, z_max = indices[2].start, indices[2].stop
         x_slice = slice(x_min-self.rois[level][0],x_max-self.rois[level][0])
         y_slice = slice(y_min-self.rois[level][1],y_max-self.rois[level][1])
         z_slice = slice(z_min-self.rois[level][2],z_max-self.rois[level][2])
-        return np.transpose(self.images[level][z_slice,y_slice,x_slice],(2,1,0))
+        image = self.dataset[self.resolution_levels[level]][self.time_point_key][self.channels[channel]]['Data']
+        return np.transpose(image[z_slice,y_slice,x_slice],(2,1,0))
 
 
-    def from_roi(self, coords, level=0, padding='constant'):
+    def from_roi(self, coords, level=0, channel=0, padding='constant'):
         # coords: [x_offset,y_offset,z_offset,x_size,y_size,z_size]
+        if isinstance(level,str):
+            level = self.resolution_levels.index(level)
+        if isinstance(channel,str):
+            channel = self.channels.index(channel)
+
         coords = [int(coord) for coord in coords]
         x_min, x_max = coords[0], coords[3]+coords[0]
         y_min, y_max = coords[1], coords[4]+coords[1]
         z_min, z_max = coords[2], coords[5]+coords[2]
         # add padding
-        [xlb,ylb,zlb] = self.rois[level][0:3] 
+        [xlb,ylb,zlb] = self.rois[level][0:3]
         [xhb,yhb,zhb] = [i+j for i,j in zip(self.rois[level][:3],self.rois[level][3:])]
         xlp = max(xlb-x_min,0)
         xhp = max(x_max-xhb,0)
@@ -50,12 +71,14 @@ class Ims():
         x_slice = slice(x_min-self.rois[level][0]+xlp,x_max-self.rois[level][0]-xhp)
         y_slice = slice(y_min-self.rois[level][1]+ylp,y_max-self.rois[level][1]-yhp)
         z_slice = slice(z_min-self.rois[level][2]+zlp,z_max-self.rois[level][2]-zhp) 
-        img = np.transpose(self.images[level][z_slice,y_slice,x_slice],(2,1,0))
-
+        if isinstance(level, int) and isinstance(channel, int):
+            image = self.dataset[self.resolution_levels[level]][self.time_point_key][self.channels[channel]]['Data']
+        else:
+            return
+        img = np.transpose(image[z_slice,y_slice,x_slice],(2,1,0))
         padded = np.pad(img, ((xlp, xhp), (ylp, yhp), (zlp, zhp)), padding)
-
         return padded
-
+    
 
     def get_info(self):
         if 'DataSetInfo' in self.hdf.keys():
@@ -96,6 +119,7 @@ class Ims():
                 }
             )
         return info
+
 
 
 class ZipZarr():
@@ -279,3 +303,12 @@ def wrap_image(image_path):
         return Tiff(image_path)
     else:
         raise Exception("image type not supported yet") 
+
+
+if __name__ == '__main__':
+    file_path = '/Users/bean/workspace/data/test.ims'
+    file = Ims(file_path)
+    img = file.from_roi([0,0,0,100,100,100],0,3)
+    print(file.resolution_levels)
+    print(file.channels)
+    print(img.shape)
