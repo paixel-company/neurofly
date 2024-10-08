@@ -77,6 +77,7 @@ class Annotator(widgets.Container):
         self.db_path = widgets.FileEdit(label="database path",filter='*.db')
 
         self.deconv_path = widgets.FileEdit(label="Deconv model weight")
+        self.channel = widgets.LineEdit(label="channel", value=0)
         self.image_switch = widgets.CheckBox(value=False,text='show panorama image')
         self.segs_switch = widgets.CheckBox(value=True,text='show/hide long segments')
         self.refresh_panorama_button = widgets.PushButton(text="refresh panorama")
@@ -137,6 +138,7 @@ class Annotator(widgets.Container):
             self.image_path,
             self.db_path,
             # self.deconv_path,
+            self.channel,
             self.image_switch,
             self.segs_switch,
             self.min_length,
@@ -460,7 +462,7 @@ class Annotator(widgets.Container):
 
 
         if keep_image == False:
-            image = self.image.from_roi([i-self.image_size.value//2 for i in c_coord]+[self.image_size.value,self.image_size.value,self.image_size.value])
+            image = self.image.from_roi([i-self.image_size.value//2 for i in c_coord]+[self.image_size.value,self.image_size.value,self.image_size.value],level=0, channel=int(self.channel.value))
             translate = [int(i)-self.image_size.value//2 for i in c_coord]
             local_coords = np.array(coords) - np.array(translate)
             mask = np.all((local_coords>= np.array([0,0,0])) & (local_coords < np.array([self.image_size.value,self.image_size.value,self.image_size.value])), axis=1)
@@ -621,7 +623,7 @@ class Annotator(widgets.Container):
             # update panorama image layer
             roi = self.image.rois[i]
             spacing = self.image.info[i]['spacing']
-            image = self.image.from_roi(roi,level=level)
+            image = self.image.from_roi(roi, level=level, channel=int(self.channel.value))
             self.panorama_image.data = image
             self.panorama_image.scale = spacing
             self.panorama_image.visible = True
@@ -629,7 +631,7 @@ class Annotator(widgets.Container):
         
         # load full image if it's tiff format
         if '.tif' in str(self.image_path.value) and self.image_switch.value == True: 
-            image = self.image.from_roi(self.image.roi) 
+            image = self.image.from_roi(self.image.roi, level=0, channel=int(self.channel.value)) 
             self.panorama_image.data = image
             self.panorama_image.visible = True
             self.panorama_image.reset_contrast_limits()
