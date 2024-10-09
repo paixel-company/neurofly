@@ -384,7 +384,10 @@ class SegerGUI(widgets.Container):
 
         for idx, roi in enumerate(rois):
             if (np.array(roi[3:]) <= np.array([128, 128, 128])).all():
-                img = image.from_roi(roi,0,int(self.channel.value))
+                if 'tif' in image_path:
+                    img = image.from_roi(roi,padding='reflect')
+                else:
+                    img = image.from_roi(roi,0,int(self.channel.value),padding='reflect') 
                 if dec is not None:
                     img = dec.process_one(img)
                 mask = self.seger.seg_net.get_mask(img)
@@ -395,7 +398,10 @@ class SegerGUI(widgets.Container):
                     roi[0] - bw, roi[1] - bw, roi[2] - bw,
                     roi[3] + 2 * bw, roi[4] + 2 * bw, roi[5] + 2 * bw
                 ]
-                padded_block = image.from_roi(roi_padded,0,int(self.channel.value),padding='reflect')
+                if 'tif' in image_path:
+                    padded_block = image.from_roi(roi,padding='reflect')
+                else:
+                    padded_block = image.from_roi(roi,0,channel,padding='reflect') 
                 mask = self.seger.get_large_mask(padded_block, dec)
                 offset = [roi[0], roi[1], roi[2]]
 
