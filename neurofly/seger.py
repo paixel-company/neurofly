@@ -401,7 +401,7 @@ class SegerGUI(widgets.Container):
                 if 'tif' in image_path:
                     padded_block = image.from_roi(roi,padding='reflect')
                 else:
-                    padded_block = image.from_roi(roi,0,channel,padding='reflect') 
+                    padded_block = image.from_roi(roi,0,int(self.channel.value),padding='reflect') 
                 mask = self.seger.get_large_mask(padded_block, dec)
                 offset = [roi[0], roi[1], roi[2]]
 
@@ -425,7 +425,7 @@ def command_line_interface():
     parser.add_argument('-bg_thres', type=int, default=150, help="ignore images with maximum intensity smaller than this")
     parser.add_argument('-chunk_size', type=int, default=300, help="image size for skeletonization")
     parser.add_argument('-channel', type=int, default=0, help="channel index of ims image")
-    parser.add_argument('-splice', type=int, default=100000, help="set this value if your image contain splices at certain interval on z axis")
+    parser.add_argument('-splice', type=int, default=100000, help="set this value if your image contain  at certain interval on z axis")
     parser.add_argument('-vis', action='store_true', default=False, help="whether to visualize result after segmentation")
     parser.add_argument('-path', action='store_true', default=True, help="whether to visualize result as paths")
     parser.add_argument('-deconv', action='store_true', default=False, help="deconvolve image before segmentation")
