@@ -239,6 +239,7 @@ class SegerGUI(widgets.Container):
         self.z = widgets.LineEdit(label="z offset", value=0)
         self.channel = widgets.LineEdit(label="image channel", value=0)
         self.chunk_size = widgets.LineEdit(label="chunk size", value=300)
+        self.bg_thres = widgets.LineEdit(label="background value", value=300)
         self.splices = widgets.LineEdit(label="z-splice", value=100000) 
         self.run_button = widgets.PushButton(text="run segmentation")
         self.run_button.clicked.connect(self.start_segmentation)
@@ -271,6 +272,7 @@ class SegerGUI(widgets.Container):
             self.z,
             self.splices,
             self.channel,
+            self.bg_thres,
             self.chunk_size,
             self.use_deconv,
             self.run_button,
@@ -306,7 +308,7 @@ class SegerGUI(widgets.Container):
 
 
     def load_seger(self):
-        self.seger = Seger(str(self.seger_weight_path.value))
+        self.seger = Seger(str(self.seger_weight_path.value),int(self.bg_thres.value))
         show_info("Segmentation model loaded")
 
 
