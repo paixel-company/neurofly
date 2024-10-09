@@ -399,9 +399,9 @@ class SegerGUI(widgets.Container):
                     roi[3] + 2 * bw, roi[4] + 2 * bw, roi[5] + 2 * bw
                 ]
                 if 'tif' in image_path:
-                    padded_block = image.from_roi(roi,padding='reflect')
+                    padded_block = image.from_roi(roi_padded,padding='reflect')
                 else:
-                    padded_block = image.from_roi(roi,0,int(self.channel.value),padding='reflect') 
+                    padded_block = image.from_roi(roi_padded,0,int(self.channel.value),padding='reflect') 
                 mask = self.seger.get_large_mask(padded_block, dec)
                 offset = [roi[0], roi[1], roi[2]]
 
