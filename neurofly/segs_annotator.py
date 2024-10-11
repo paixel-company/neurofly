@@ -763,6 +763,7 @@ class Annotator(widgets.Container):
 
         connected_components = list(nx.connected_components(self.G))
 
+        total_length = 0
         for cc in connected_components:
             type = 'unknown_'
             if (len(cc)<int(self.len_thres.value) and self.segs_switch.value == True) or len(cc) <= self.min_length.value:
@@ -770,6 +771,7 @@ class Annotator(widgets.Container):
             if (len(cc)>=int(self.len_thres.value) and self.segs_switch.value == False) or len(cc) <= self.min_length.value:
                 continue
 
+            total_length += len(cc)*3
             subgraph = self.G.subgraph(cc)
             somas = [n for n, attr in subgraph.nodes(data=True) if attr.get('type') == 1]
             if not somas:
@@ -813,7 +815,7 @@ class Annotator(widgets.Container):
                 swc_lines.append(swc_line)
             
             # Step 4: Define SWC filename using soma's node ID
-            swc_filename = os.path.join(new_dir,type+f"neuron_{soma}.swc") 
+            swc_filename = os.path.join(new_dir, type + f"neuron_{soma}.swc")
             
             # Step 5: Write SWC file
             try:
@@ -822,6 +824,7 @@ class Annotator(widgets.Container):
                 print(f"Exported SWC file: {swc_filename}")
             except Exception as e:
                 print(f"Error writing SWC file {swc_filename}: {e}")
+        show_info(f"total length {total_length} um")
 
 
     def node_operations(self, layer, event):
