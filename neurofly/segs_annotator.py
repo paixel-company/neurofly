@@ -2,6 +2,7 @@ import numpy as np
 import networkx as nx
 import napari
 import random
+import shutil
 from neurofly.dbio import read_edges, read_nodes, add_nodes, add_edges, check_node, uncheck_nodes, change_type, delete_nodes
 from magicgui import widgets
 from neurofly.image_reader import wrap_image
@@ -33,7 +34,19 @@ class Annotator(widgets.Container):
         self.ex_edge_layer = self.viewer.add_vectors(None,ndim=3,name='existing edges',vector_style='line',visible=False,edge_width=0.3,opacity=1)
         # ------------------------
 
-        self.add_control() # control panel
+        # node type notations according to http://www.neuronland.org/NLMorphologyConverter/MorphologyFormats/SWC/Spec.html
+        self.node_types = [
+            "undefined",         # 0
+            "soma",              # 1
+            "axon",              # 2
+            "(basal) dendrite",  # 3
+            "apical dendrite",   # 4
+            "fork point",        # 5
+            "end point",         # 6
+            "ambiguous"          # 7
+        ]
+
+        self.add_control()
 
         # --------- data structure ---------
         self.image = None
@@ -60,8 +73,6 @@ class Annotator(widgets.Container):
         self.viewer.bind_key('w', self.connect_one_nearest, overwrite=True)
         self.viewer.bind_key('e', self.connect_two_nearest, overwrite=True)
         self.viewer.bind_key('b', self.last_task, overwrite=True)
-        self.viewer.bind_key('l', self.label_soma, overwrite=True)
-        self.viewer.bind_key('a', self.label_ambiguous, overwrite=True)
         self.viewer.bind_key('n', self.get_next_task, overwrite=True)
         self.viewer.bind_key('i', self.deconvolve, overwrite=True)
         self.viewer.bind_key('c', self.purge, overwrite=True)
@@ -100,11 +111,14 @@ class Annotator(widgets.Container):
         self.submit_button = PushButton(text="submit (f)")
         self.submit_button.history = []
         self.proofreading_switch = widgets.CheckBox(value=False,text='Proofreading')
-        self.soma_buttom = widgets.PushButton(text="label/unlabel soma (l)")
-        self.ambiguous_button = widgets.PushButton(text="label/unlabel ambiguous (a)")
         # next task is just ask for new task without submitting
         self.next_task_button = widgets.PushButton(text="get next task (n)")
         self.purge_button = widgets.PushButton(text="purge block (c)")
+        self.export_swc_button = widgets.PushButton(text="export swc files")
+        self.node_type_dropdown = widgets.ComboBox(
+            choices=self.node_types,
+            label="node type",
+        )
         # ---------------------------
 
         # ----- widgets bindings -----
@@ -116,14 +130,14 @@ class Annotator(widgets.Container):
         self.refresh_button.clicked.connect(lambda: self.refresh(self.viewer,keep_image=False))
         self.recover_button.clicked.connect(self.recover)
         self.return_button.clicked.connect(self.last_task)
-        self.soma_buttom.clicked.connect(self.label_soma)
-        self.ambiguous_button.clicked.connect(self.label_ambiguous)
         self.next_task_button.clicked.connect(self.get_next_task)
         self.deconv_path.changed.connect(self.load_deconver)
         self.image_path.changed.connect(self.on_reading_image)
         self.db_path.changed.connect(self.on_reading_db)
         self.deconv_button.clicked.connect(self.deconvolve)
         self.purge_button.clicked.connect(self.purge)
+        self.export_swc_button.clicked.connect(self.export_swc)
+        self.node_type_dropdown.changed.connect(self.on_changing_type)
         # ---------------------------
 
         # ------load default model weights-----
@@ -137,8 +151,8 @@ class Annotator(widgets.Container):
             self.user_name,
             self.image_path,
             self.db_path,
-            # self.deconv_path,
             self.channel,
+            self.export_swc_button,
             self.image_switch,
             self.segs_switch,
             self.min_length,
@@ -150,14 +164,13 @@ class Annotator(widgets.Container):
             self.total_length,
             self.nodes_left,
             self.total_nodes_left,
-            self.image_size,
             self.proofreading_switch,
+            self.image_size,
+            self.node_type_dropdown,
             self.refresh_button,
             self.return_button,
             self.recover_button,
             self.deconv_button,
-            self.soma_buttom,
-            self.ambiguous_button,
             self.purge_button,
             self.next_task_button,
             self.submit_button
@@ -200,7 +213,7 @@ class Annotator(widgets.Container):
         # query a larger block
         query_box = (c_coord[0]-h_size-10,c_coord[1]-h_size-10,c_coord[2]-h_size-10,c_coord[0]+h_size+20,c_coord[1]+h_size+20,c_coord[2]+h_size+20)
         nbrs = list(self.rtree.intersection(query_box, objects=False))
-        nbrs = nbrs + self.added['nodes']
+        # nbrs = nbrs + self.added['nodes']
         sub_g = self.G.subgraph(nbrs)
         connected_components = list(nx.connected_components(sub_g))
         nodes_to_remove = []
@@ -256,27 +269,16 @@ class Annotator(widgets.Container):
         self.refresh(self.viewer,keep_image=False)
 
 
-    def label_soma(self,viewer):
+    def on_changing_type(self):
+        if self.mode_switch.mode == 'panorama':
+            show_info("switch to labeling mode")
+            return
         node_id = int(self.selected_node.value)
-        if self.G.nodes[node_id]['type'] == 0:
-            change_type(str(self.db_path.value),node_id,1)
-            self.G.nodes[node_id]['type'] = 1
-        elif self.G.nodes[node_id]['type'] == 1:
-            change_type(str(self.db_path.value),node_id,0)
-            self.G.nodes[node_id]['type'] = 0
+        type_idx = self.node_types.index(str(self.node_type_dropdown.value))
+        change_type(str(self.db_path.value),node_id,type_idx)
+        self.G.nodes[node_id]['type'] = type_idx
+        show_info(f"{node_id} labeled as {str(self.node_type_dropdown.value)}")
         self.refresh(self.viewer)
-        
-
-    def label_ambiguous(self,viewer):
-        node_id = int(self.selected_node.value)
-        if self.G.nodes[node_id]['type'] == 0:
-            change_type(str(self.db_path.value),node_id,8)
-            self.G.nodes[node_id]['type'] = 8
-            show_info(f"{node_id} labeled as ambiguous")
-        elif self.G.nodes[node_id]['type'] == 8:
-            change_type(str(self.db_path.value),node_id,0)
-            self.G.nodes[node_id]['type'] = 0
-            show_info(f"{node_id} labeled as normal")
 
 
     def connect_one_nearest(self,viewer):
@@ -406,7 +408,7 @@ class Annotator(widgets.Container):
             h_size = self.image_size.value//2
             query_box = (c_coord[0]-h_size,c_coord[1]-h_size,c_coord[2]-h_size,c_coord[0]+h_size,c_coord[1]+h_size,c_coord[2]+h_size)
             nbrs = list(self.rtree.intersection(query_box, objects=False))
-            nbrs = nbrs + self.added['nodes']
+            # nbrs = nbrs + self.added['nodes']
             sub_g = self.G.subgraph(nbrs)
             connected_components = list(nx.connected_components(sub_g))
         else:
@@ -438,7 +440,7 @@ class Annotator(widgets.Container):
                     sizes.append(1)
                 if node['type']==1:
                     sizes.pop(-1)
-                    sizes.append(4)
+                    sizes.append(8)
 
 
         for c_node in nbrs:
@@ -477,6 +479,11 @@ class Annotator(widgets.Container):
             self.image_layer.contrast_limits = [min(mean_value//2,200),mean_value+std_value]
             self.image_layer.translate = translate
             self.viewer.camera.center = c_coord
+
+
+        self.node_type_dropdown.changed.disconnect(self.on_changing_type)
+        self.node_type_dropdown.value = self.node_types[self.G.nodes[selection]['type']]
+        self.node_type_dropdown.changed.connect(self.on_changing_type)
 
 
         self.point_layer.data = np.array(coords)
@@ -740,13 +747,86 @@ class Annotator(widgets.Container):
         self.edge_layer.data = np.array(vectors)
 
 
-    def seg_current_block(self, viewer):
-        pass
+
+    def export_swc(self):
+        # create a folder alongside database file to hold swc files
+        try:
+            directory = os.path.dirname(self.db_path.value)
+            new_dir = os.path.join(directory, 'swc_files')
+            if os.path.exists(new_dir) and os.path.isdir(new_dir):
+                shutil.rmtree(new_dir)
+            os.makedirs(new_dir, exist_ok=True)
+            print(f"Directory '{new_dir}' has been reset successfully.")
+        except Exception as e:
+            print(f"Error while resetting directory '{new_dir}': {e}")
+        
+
+        connected_components = list(nx.connected_components(self.G))
+
+        for cc in connected_components:
+            type = 'unknown_'
+            if (len(cc)<int(self.len_thres.value) and self.segs_switch.value == True) or len(cc) <= self.min_length.value:
+                continue
+            if (len(cc)>=int(self.len_thres.value) and self.segs_switch.value == False) or len(cc) <= self.min_length.value:
+                continue
+
+            subgraph = self.G.subgraph(cc)
+            somas = [n for n, attr in subgraph.nodes(data=True) if attr.get('type') == 1]
+            if not somas:
+                somas = list(cc)[:1]
+                type = 'no_soma_'
+            elif len(somas) == 1:
+                type = 'one_soma_'
+            elif len(somas) > 1:
+                type = 'many_soma_'
+            soma = somas[0]
+            
+            # Step 2: Perform DFS to establish parent-child relationships
+            parent_dict = {soma: -1}  # Soma has no parent
+            stack = [soma]
+            visited = set([soma])
+            
+            while stack:
+                current = stack.pop()
+                for neighbor in subgraph.neighbors(current):
+                    if neighbor not in visited:
+                        parent_dict[neighbor] = current
+                        visited.add(neighbor)
+                        stack.append(neighbor)
+            
+            # Check for cycles or disconnected nodes
+            if len(parent_dict) != subgraph.number_of_nodes():
+                print(f"Warning: Detected cycles or disconnected nodes in neuron {soma}. Exporting tree structure derived from DFS.")
+            
+            # Step 3: Prepare SWC content
+            swc_lines = ["# Generated by NeuroFly\n"]
+            for node, parent in parent_dict.items():
+                attr = subgraph.nodes[node]
+                coord = attr.get('coord', [0.0, 0.0, 0.0])  # Default coordinates if not provided
+                node_type = attr.get('type', 0)            # Default type if not provided
+                radius = attr.get('radius', 1.0)          # Default radius if not provided
+                
+                # Format parent ID (-1 for soma)
+                parent_id = parent if parent in subgraph else -1
+                
+                swc_line = f"{node} {node_type} {coord[0]} {coord[1]} {coord[2]} {radius} {parent_id}\n"
+                swc_lines.append(swc_line)
+            
+            # Step 4: Define SWC filename using soma's node ID
+            swc_filename = os.path.join(new_dir,type+f"neuron_{soma}.swc") 
+            
+            # Step 5: Write SWC file
+            try:
+                with open(swc_filename, 'w') as f:
+                    f.writelines(swc_lines)
+                print(f"Exported SWC file: {swc_filename}")
+            except Exception as e:
+                print(f"Error writing SWC file {swc_filename}: {e}")
 
 
     def node_operations(self, layer, event):
         '''
-        this is appended to point_layer layer
+        this is appended to point_layer
         node operations:
             In proofreading:
                 mouse 1: switch center node
@@ -913,3 +993,5 @@ class Annotator(widgets.Container):
 
             self.refresh(self.viewer)
             self.viewer.layers.selection.active = self.image_layer
+
+
