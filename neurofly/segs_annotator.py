@@ -749,6 +749,9 @@ class Annotator(widgets.Container):
 
 
     def export_swc(self):
+        if self.mode_switch.mode != 'panorama':
+            show_info("Switch to panorama mode first")
+            return
         # create a folder alongside database file to hold swc files
         try:
             directory = os.path.dirname(self.db_path.value)
@@ -838,7 +841,6 @@ class Annotator(widgets.Container):
                 mouse 1: add/remove edge
                 mouse 2: remove node and its edges
                 shift + mouse1: switch center node
-        
         One operation contains (click type, mode, modifier)
         '''
         index = layer.get_value(

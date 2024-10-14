@@ -247,6 +247,7 @@ class SegerGUI(widgets.Container):
         self.deconver_weight_path = widgets.FileEdit(label="deconver weight")
         self.use_deconv = widgets.CheckBox(value=False,text='deconvolve before segment')
         self.progress_bar = widgets.ProgressBar(min=0, max=100, value=0)
+        self.show_progress = widgets.CheckBox(value=False,text="show progress")
 
         seger_weight_path = default_seger_weight_path
         deconver_weight_path = default_dec_weight_path
@@ -275,6 +276,7 @@ class SegerGUI(widgets.Container):
             self.bg_thres,
             self.chunk_size,
             self.use_deconv,
+            self.show_progress,
             self.run_button,
             self.progress_bar
             ])
@@ -328,6 +330,8 @@ class SegerGUI(widgets.Container):
         (current, whole, segs_in_block) = value
         self.progress_bar.max = whole
         self.progress_bar.value = current
+        if self.show_progress.value == False:
+            return
         points_in_block = []
         for seg in segs_in_block:
             points_in_block += seg['sampled_points']
@@ -337,7 +341,7 @@ class SegerGUI(widgets.Container):
         if not hasattr(self, 'points_layer') or self.points_layer is None:
             self.points_layer = self.viewer.add_points(
                 points_array,
-                size=2,
+                size=1,
                 face_color='orange',
                 name='neurite points'
             )
@@ -350,6 +354,7 @@ class SegerGUI(widgets.Container):
     def on_task_finished(self):
         self.run_button.enabled = True
 
+
     def on_segmentation_finished(self, segs):
         db_path = str(self.save_dir.value)
         if db_path != '.':
@@ -360,6 +365,7 @@ class SegerGUI(widgets.Container):
         show_segs_as_instances(seg_points, self.viewer)
         self.viewer.layers.remove(self.points_layer)
         self.points_layer = None
+
 
     @thread_worker()
     def process_whole(self):
@@ -459,7 +465,10 @@ def command_line_interface():
         if args.roi is None:
             args.roi = image.roi
         if (np.array(args.roi[3:])<np.array([1024,1024,1024])).all():
-            img = image.from_roi(args.roi,0,args.channel)
+            if 'tif' in args.image_path:
+                img = image.from_roi(args.roi,padding='reflect')
+            else:
+                img = image.from_roi(args.roi,0,args.channel,padding='reflect') 
             image_layer = viewer.add_image(img)
             image_layer.translate = args.roi[0:3]
         else:
