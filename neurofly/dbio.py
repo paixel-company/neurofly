@@ -262,21 +262,25 @@ def add_edges(path, edges, user_name='somebody'):
     time = datetime.now()
 
     for [src, tar] in edges:
-        if isinstance(src, int) and isinstance(tar, int):
-            cursor.execute("SELECT COUNT(*) FROM nodes WHERE nid = ?", (src,))
-            src_exists = cursor.fetchone()[0]
+        undirected_edges.append([src, tar])
+        undirected_edges.append([tar, src])
 
-            cursor.execute("SELECT COUNT(*) FROM nodes WHERE nid = ?", (tar,))
-            tar_exists = cursor.fetchone()[0]
+    # for [src, tar] in edges:
+    #     if isinstance(src, int) and isinstance(tar, int):
+    #         cursor.execute("SELECT COUNT(*) FROM nodes WHERE nid = ?", (src,))
+    #         src_exists = cursor.fetchone()[0]
 
-            if src_exists and tar_exists:
-                # Add undirected edges if both src and tar exist
-                undirected_edges.append([src, tar])
-                undirected_edges.append([tar, src])
-            else:
-                print(f"Either {src} or {tar} does not exist in the nodes table.")
-        else:
-            print(f"{[src, tar]} is illegal")
+    #         cursor.execute("SELECT COUNT(*) FROM nodes WHERE nid = ?", (tar,))
+    #         tar_exists = cursor.fetchone()[0]
+
+    #         if src_exists and tar_exists:
+    #             # Add undirected edges if both src and tar exist
+    #             undirected_edges.append([src, tar])
+    #             undirected_edges.append([tar, src])
+    #         else:
+    #             print(f"Either {src} or {tar} does not exist in the nodes table.")
+    #     else:
+    #         print(f"{[src, tar]} is illegal")
 
     # Insert the valid undirected edges into the edges table
     for edge in undirected_edges:
