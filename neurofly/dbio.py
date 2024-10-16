@@ -102,13 +102,11 @@ def segs2db(segs,path):
             count+=1
             nodes.append([count,points[0]])
             edges.append([count,count+1])
-            edges.append([count+1,count])
 
             for c in points[1:-1]:
                 count+=1
                 nodes.append([count,c])
                 edges.append([count,count+1])
-                edges.append([count+1,count])
 
             count+=1
             nodes.append([count,points[-1]])
