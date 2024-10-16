@@ -44,15 +44,19 @@ def get_subregions(region, subregion_size, overlap):
 
 def patchify_without_splices(roi,patch_size,splices=300):
     rois = []
-    xs = list(range(roi[0],roi[0]+roi[3],patch_size[0]))
+    xs = list(range(roi[0],roi[0]+roi[3],patch_size))
     xs.append(roi[0]+roi[3])
 
-    ys = list(range(roi[1],roi[1]+roi[4],patch_size[1]))
+    ys = list(range(roi[1],roi[1]+roi[4],patch_size))
     ys.append(roi[1]+roi[4])
 
-    zs = [z for z in range(roi[2],roi[2]+roi[5]) if z%splices==0]
-    if roi[2]%splices!=0:
-        zs.insert(0,roi[2])
+    if patch_size%splices==0:
+        zs = [z for z in range(roi[2],roi[2]+roi[5]) if z%splices==0 or z%patch_size==0]
+        if roi[2]%splices!=0:
+            zs.insert(0,roi[2])
+    else:
+        zs = list(range(roi[2],roi[2]+roi[5],patch_size))
+
     zs.append(roi[2]+roi[5])
 
     for x1,x2 in zip(xs[:-1],xs[1:]):

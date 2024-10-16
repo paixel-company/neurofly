@@ -129,7 +129,9 @@ def segs2db(segs,path):
             'checked': 0
         })
 
+    print(f'Adding {len(nodes)} nodes to database')
     add_nodes(path,nodes_list)
+    print(f'Adding {len(edges)} edges to database')
     add_edges(path,edges,user_name='seger')
 
 
@@ -233,6 +235,7 @@ def add_nodes(path,nodes):
     # nodes: [{'nid','coord','creator','status','type'}]
     conn = sqlite3.connect(path)
     cursor = conn.cursor()
+    time = datetime.now()
     for node in nodes:
         if type(node['nid']) != int:
             print(f"{node} is illegal")
@@ -244,7 +247,7 @@ def add_nodes(path,nodes):
                     node['creator'],
                     node['status'] if 'status' in node.keys() else 1,
                     node['type'],
-                    datetime.now(),
+                    time,
                     node['checked'] if 'checked' in node.keys() else 0
                 )
             )
@@ -258,6 +261,7 @@ def add_edges(path, edges, user_name='somebody'):
     undirected_edges = []
     conn = sqlite3.connect(path)
     cursor = conn.cursor()
+    time = datetime.now()
 
     for [src, tar] in edges:
         if isinstance(src, int) and isinstance(tar, int):
@@ -280,7 +284,7 @@ def add_edges(path, edges, user_name='somebody'):
     for edge in undirected_edges:
         cursor.execute(
             "INSERT OR IGNORE INTO edges (src, des, date, creator) VALUES (?, ?, ?, ?)",
-            (edge[0], edge[1], datetime.now(), user_name)
+            (edge[0], edge[1], time, user_name)
         )
 
     conn.commit()

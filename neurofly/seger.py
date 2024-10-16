@@ -183,8 +183,7 @@ class Seger():
             image_roi = image.roi
         else:
             image_roi = roi
-        rois = patchify_without_splices(image_roi,[chunk_size,chunk_size,chunk_size],splices=splice)
-        num_rois = len(rois)
+        rois = patchify_without_splices(image_roi,chunk_size,splices=splice)
         # pad rois
         segs = []
         for roi in tqdm(rois):
@@ -385,7 +384,7 @@ class SegerGUI(widgets.Container):
         image = wrap_image(image_path)
         image_roi = roi if roi else image.roi
 
-        rois = patchify_without_splices(image_roi, [chunk_size] * 3, splices=splice)
+        rois = patchify_without_splices(image_roi, chunk_size, splices=splice)
         total_rois = len(rois)
 
         segs = []
@@ -433,7 +432,7 @@ def command_line_interface():
     parser.add_argument('-bg_thres', type=int, default=150, help="ignore images with maximum intensity smaller than this")
     parser.add_argument('-chunk_size', type=int, default=300, help="image size for skeletonization")
     parser.add_argument('-channel', type=int, default=0, help="channel index of ims image")
-    parser.add_argument('-splice', type=int, default=100000, help="set this value if your image contain  at certain interval on z axis")
+    parser.add_argument('-splice', type=int, default=300, help="set this value if your image contain  at certain interval on z axis")
     parser.add_argument('-vis', action='store_true', default=False, help="whether to visualize result after segmentation")
     parser.add_argument('-path', action='store_true', default=True, help="whether to visualize result as paths")
     parser.add_argument('-deconv', action='store_true', default=False, help="deconvolve image before segmentation")
