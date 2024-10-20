@@ -9,6 +9,7 @@ from neurofly.image_reader import wrap_image
 from napari.utils.notifications import show_info
 from rtree import index
 from neurofly.common import *
+import csv
 
 # use PushButton as a recorder of history
 class PushButton(widgets.PushButton):
@@ -115,6 +116,7 @@ class Annotator(widgets.Container):
         self.next_task_button = widgets.PushButton(text="get next task (n)")
         self.purge_button = widgets.PushButton(text="purge block (c)")
         self.export_swc_button = widgets.PushButton(text="export swc files")
+        self.export_csv_button = widgets.PushButton(text="export csv files")
         self.node_type_dropdown = widgets.ComboBox(
             choices=self.node_types,
             label="node type",
@@ -137,6 +139,7 @@ class Annotator(widgets.Container):
         self.deconv_button.clicked.connect(self.deconvolve)
         self.purge_button.clicked.connect(self.purge)
         self.export_swc_button.clicked.connect(self.export_swc)
+        self.export_csv_button.clicked.connect(self.export_csv)
         self.node_type_dropdown.changed.connect(self.on_changing_type)
         # ---------------------------
 
@@ -153,6 +156,7 @@ class Annotator(widgets.Container):
             self.db_path,
             self.channel,
             self.export_swc_button,
+            self.export_csv_button,
             self.image_switch,
             self.segs_switch,
             self.min_length,
@@ -829,6 +833,86 @@ class Annotator(widgets.Container):
                 print(f"Error writing SWC file {swc_filename}: {e}")
         show_info(f"total length {total_length} um")
 
+    def export_csv(self):
+        if self.mode_switch.mode != 'panorama':
+            show_info("Switch to panorama mode first")
+            return
+        
+        # Create a folder alongside the database file to hold CSV files
+        try:
+            directory = os.path.dirname(self.db_path.value)
+            new_dir = os.path.join(directory, 'csv_files')
+            if os.path.exists(new_dir) and os.path.isdir(new_dir):
+                shutil.rmtree(new_dir)
+            os.makedirs(new_dir, exist_ok=True)
+            print(f"Directory '{new_dir}' has been reset successfully.")
+        except Exception as e:
+            print(f"Error while resetting directory '{new_dir}': {e}")
+
+        connected_components = list(nx.connected_components(self.G))
+
+        total_length = 0
+        for cc in connected_components:
+            type = 'unknown_'
+            if (len(cc)<int(self.len_thres.value) and self.segs_switch.value == True) or len(cc) <= self.min_length.value:
+                continue
+            if (len(cc)>=int(self.len_thres.value) and self.segs_switch.value == False) or len(cc) <= self.min_length.value:
+                continue
+
+            total_length += len(cc)*3
+            subgraph = self.G.subgraph(cc)
+            somas = [n for n, attr in subgraph.nodes(data=True) if attr.get('type') == 1]
+            if not somas:
+                somas = list(cc)[:1]
+                type = 'no_soma_'
+            elif len(somas) == 1:
+                type = 'one_soma_'
+            elif len(somas) > 1:
+                type = 'many_soma_'
+            soma = somas[0]
+            
+            # Step 2: Perform DFS to establish parent-child relationships
+            parent_dict = {soma: -1}  # Soma has no parent
+            stack = [soma]
+            visited = set([soma])
+            
+            while stack:
+                current = stack.pop()
+                for neighbor in subgraph.neighbors(current):
+                    if neighbor not in visited:
+                        parent_dict[neighbor] = current
+                        visited.add(neighbor)
+                        stack.append(neighbor)
+            
+            # Check for cycles or disconnected nodes
+            if len(parent_dict) != subgraph.number_of_nodes():
+                print(f"Warning: Detected cycles or disconnected nodes in neuron {soma}. Exporting tree structure derived from DFS.")
+            
+            # Step 3: Prepare CSV content with lowercase headers for ClickHouse
+            csv_data = [["node_id", "type", "x", "y", "z", "radius", "parent_id"]]
+            for node, parent in parent_dict.items():
+                attr = subgraph.nodes[node]
+                coord = attr.get('coord', [0.0, 0.0, 0.0])  # Default coordinates if not provided
+                node_type = attr.get('type', 0)            # Default type if not provided
+                radius = attr.get('radius', 1.0)           # Default radius if not provided
+                parent_id = parent if parent in subgraph else -1  # Parent ID or -1 if none
+                
+                csv_row = [node, node_type, coord[0], coord[1], coord[2], radius, parent_id]
+                csv_data.append(csv_row)
+            
+            # Step 4: Define CSV filename using soma's node ID
+            csv_filename = os.path.join(new_dir, type + f"neuron_{soma}.csv")
+            
+            # Step 5: Write CSV file
+            try:
+                with open(csv_filename, 'w', newline='') as f:
+                    writer = csv.writer(f)
+                    writer.writerows(csv_data)
+                print(f"Exported CSV file: {csv_filename}")
+            except Exception as e:
+                print(f"Error writing CSV file {csv_filename}: {e}")
+        
+        show_info(f"Total length {total_length} um")
 
     def node_operations(self, layer, event):
         '''
