@@ -849,17 +849,25 @@ class Annotator(widgets.Container):
         except Exception as e:
             print(f"Error while resetting directory '{new_dir}': {e}")
 
+        # Extract database name (without extension) from the db_path
+        db_name = os.path.basename(self.db_path.value).split('.')[0]
+
         connected_components = list(nx.connected_components(self.G))
 
         total_length = 0
+        max_rows_per_file = 200000  # Maximum number of rows per file
+        current_row_count = 0       # Counter for current file's row count
+        file_index = 1              # Index to track the file number
+        csv_data = [["node_id", "type", "x", "y", "z", "radius", "parent_id", "brain"]]  # Initial header
+
         for cc in connected_components:
             type = 'unknown_'
-            if (len(cc)<int(self.len_thres.value) and self.segs_switch.value == True) or len(cc) <= self.min_length.value:
+            if (len(cc) < int(self.len_thres.value) and self.segs_switch.value == True) or len(cc) <= self.min_length.value:
                 continue
-            if (len(cc)>=int(self.len_thres.value) and self.segs_switch.value == False) or len(cc) <= self.min_length.value:
+            if (len(cc) >= int(self.len_thres.value) and self.segs_switch.value == False) or len(cc) <= self.min_length.value:
                 continue
 
-            total_length += len(cc)*3
+            total_length += len(cc) * 3
             subgraph = self.G.subgraph(cc)
             somas = [n for n, attr in subgraph.nodes(data=True) if attr.get('type') == 1]
             if not somas:
@@ -888,27 +896,46 @@ class Annotator(widgets.Container):
             if len(parent_dict) != subgraph.number_of_nodes():
                 print(f"Warning: Detected cycles or disconnected nodes in neuron {soma}. Exporting tree structure derived from DFS.")
             
-            # Step 3: Prepare CSV content with lowercase headers for ClickHouse
-            csv_data = [["node_id", "type", "x", "y", "z", "radius", "parent_id"]]
+            # Step 3: Prepare CSV content with lowercase headers for ClickHouse, and include brain field
             for node, parent in parent_dict.items():
                 attr = subgraph.nodes[node]
                 coord = attr.get('coord', [0.0, 0.0, 0.0])  # Default coordinates if not provided
                 node_type = attr.get('type', 0)            # Default type if not provided
                 radius = attr.get('radius', 1.0)           # Default radius if not provided
                 parent_id = parent if parent in subgraph else -1  # Parent ID or -1 if none
-                
-                csv_row = [node, node_type, coord[0], coord[1], coord[2], radius, parent_id]
+
+                # Append brain field (db_name)
+                csv_row = [node, node_type, coord[0], coord[1], coord[2], radius, parent_id, db_name]
                 csv_data.append(csv_row)
+                current_row_count += 1
+
+                # Step 4: Check if the current CSV file exceeds 200,000 rows
+                if current_row_count >= max_rows_per_file:
+                    # Write the current batch of rows to a new CSV file
+                    csv_filename = os.path.join(new_dir, f"{db_name}_rows_{file_index * max_rows_per_file}.csv")
+                    
+                    try:
+                        with open(csv_filename, 'w', newline='') as f:
+                            writer = csv.writer(f)
+                            writer.writerows(csv_data)
+                        print(f"Exported CSV file: {csv_filename} with {current_row_count} rows")
+                    except Exception as e:
+                        print(f"Error writing CSV file {csv_filename}: {e}")
+                    
+                    # Reset for the next batch
+                    csv_data = [["node_id", "type", "x", "y", "z", "radius", "parent_id", "brain"]]  # Reset header
+                    current_row_count = 0
+                    file_index += 1
+        
+        # Write any remaining rows that haven't been written yet
+        if current_row_count > 0:
+            csv_filename = os.path.join(new_dir, f"{db_name}_rows_{file_index * max_rows_per_file}.csv")
             
-            # Step 4: Define CSV filename using soma's node ID
-            csv_filename = os.path.join(new_dir, type + f"neuron_{soma}.csv")
-            
-            # Step 5: Write CSV file
             try:
                 with open(csv_filename, 'w', newline='') as f:
                     writer = csv.writer(f)
                     writer.writerows(csv_data)
-                print(f"Exported CSV file: {csv_filename}")
+                print(f"Exported CSV file: {csv_filename} with {current_row_count} rows")
             except Exception as e:
                 print(f"Error writing CSV file {csv_filename}: {e}")
         
