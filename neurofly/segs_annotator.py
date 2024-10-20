@@ -905,7 +905,7 @@ class Annotator(widgets.Container):
                 parent_id = parent if parent in subgraph else -1  # Parent ID or -1 if none
 
                 # Append brain field (db_name)
-                csv_row = [node, node_type, coord[0], coord[1], coord[2], radius, parent_id, db_name]
+                csv_row = [node, node_type, coord[0], coord[1], coord[2], radius, parent_id, db_name, soma]
                 csv_data.append(csv_row)
                 current_row_count += 1
 
@@ -923,7 +923,7 @@ class Annotator(widgets.Container):
                         print(f"Error writing CSV file {csv_filename}: {e}")
                     
                     # Reset for the next batch
-                    csv_data = [["node_id", "type", "x", "y", "z", "radius", "parent_id", "brain"]]  # Reset header
+                    csv_data = [["node_id", "type", "x", "y", "z", "radius", "parent_id", "brain", "neuron_id"]]  # Reset header
                     current_row_count = 0
                     file_index += 1
         
