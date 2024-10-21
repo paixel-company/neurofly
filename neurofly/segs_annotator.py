@@ -31,7 +31,7 @@ class Annotator(widgets.Container):
         self.image_layer = self.viewer.add_image(np.ones((64, 64, 64), dtype=np.uint16),name='image',visible=False)
         self.point_layer = self.viewer.add_points(None,ndim=3,size=None,shading='spherical',border_width=0,properties=None,face_colormap='hsl',name='points',visible=False)
         self.edge_layer = self.viewer.add_vectors(None,ndim=3,name='added edges',vector_style='triangle',visible=False, edge_color='orange',opacity=1.0)
-        self.ex_edge_layer = self.viewer.add_vectors(None,ndim=3,name='existing edges',vector_style='line',visible=False,edge_width=0.3,opacity=1)
+        self.ex_edge_layer = self.viewer.add_vectors(None,ndim=3,name='existing edges',vector_style='line',visible=False,edge_width=0.3,opacity=0.15)
         # ------------------------
 
         # node type notations according to http://www.neuronland.org/NLMorphologyConverter/MorphologyFormats/SWC/Spec.html
@@ -45,6 +45,8 @@ class Annotator(widgets.Container):
             "end point",         # 6
             "ambiguous"          # 7
         ]
+
+        self.num_branches = 10
 
         self.add_control()
 
@@ -76,6 +78,8 @@ class Annotator(widgets.Container):
         self.viewer.bind_key('n', self.get_next_task, overwrite=True)
         self.viewer.bind_key('i', self.deconvolve, overwrite=True)
         self.viewer.bind_key('c', self.purge, overwrite=True)
+        self.viewer.bind_key('Up', self.show_more_branches , overwrite=True)
+        self.viewer.bind_key('Down', self.show_less_branches , overwrite=True)
 
         self.panorama_points.mouse_drag_callbacks.append(self.node_selection)
         self.point_layer.mouse_drag_callbacks.append(self.node_operations)
@@ -205,7 +209,7 @@ class Annotator(widgets.Container):
             show_info("this image is too large, try a smaller one")
 
 
-    def purge(self,viewer):
+    def purge(self, viewer):
         selection = int(self.selected_node.value)
         c_coord = self.G.nodes[selection]['coord']
 
@@ -267,6 +271,22 @@ class Annotator(widgets.Container):
         }
         self.refresh_edge_layer()
         self.refresh(self.viewer,keep_image=False)
+    
+
+    def show_more_branches(self, viewer):
+        if self.proofreading_switch.value == False:
+            return
+        self.num_branches += 1
+        self.refresh(self.viewer)
+
+
+
+    def show_less_branches(self, viewer):
+        if self.proofreading_switch.value == False:
+            return
+        if self.num_branches >= 2:
+            self.num_branches -= 1
+        self.refresh(self.viewer)
 
 
     def on_changing_type(self):
@@ -424,33 +444,75 @@ class Annotator(widgets.Container):
         nids = []
         edges = []
 
-        for cc in connected_components:
-            color = random.random()
-            nodes = [self.G.nodes[i] for i in cc if self.G.has_node(i)]
-            for node in nodes:
-                coords.append(node['coord'])
-                nids.append(node['nid'])
-                if node['checked']==-1 and self.proofreading_switch.value==True:
-                    colors.append(0)
-                else:
+        if self.proofreading_switch.value == False:
+            for cc in connected_components:
+                color = random.random()
+                nodes = [self.G.nodes[i] for i in cc if self.G.has_node(i)]
+                for node in nodes:
+                    coords.append(node['coord'])
+                    nids.append(node['nid'])
                     colors.append(color)
-                if node['nid']==selection:
-                    sizes.append(2)
-                else:
-                    sizes.append(1)
-                if node['type']==1:
-                    sizes.pop(-1)
-                    sizes.append(8)
+                    if node['nid']==selection:
+                        sizes.append(2)
+                    else:
+                        sizes.append(1)
+                    if node['type']==1:
+                        sizes.pop(-1)
+                        sizes.append(8)
+
+            for c_node in nbrs:
+                if not self.G.has_node(c_node):
+                    continue
+                p1 = self.G.nodes[c_node]['coord']
+                for pid in list(self.G.neighbors(c_node)):
+                    p2 = self.G.nodes[pid]['coord']
+                    v = [j-i for i,j in zip(p1,p2)]
+                    edges.append([p1,v])
+
+        else:
+            branch_points = {node for node in self.G.nodes if self.G.degree[node] > 2}
+            distances = {node: float('inf') for node in self.G.nodes}
+            distances[selection] = 0
+            
+            # BFS queue (node, number of branch points encountered)
+            queue = [(selection, 0)]
+            visited = set([selection])
+            
+            while queue:
+                current_node, branch_count = queue.pop(0)
+                
+                # If current node is a branch point, increment the branch count
+                if current_node in branch_points and current_node != selection:
+                    branch_count += 1
+                
+                for neighbor in self.G.neighbors(current_node):
+                    if neighbor not in visited:
+                        visited.add(neighbor)
+                        distances[neighbor] = branch_count
+                        queue.append((neighbor, branch_count))
+            
+
+            for cc in connected_components:
+                color = random.random()
+                nodes = [self.G.nodes[i] for i in cc if self.G.has_node(i)]
+                for node in nodes:
+                    if distances[node['nid']]>=self.num_branches:
+                        continue
+                    coords.append(node['coord'])
+                    nids.append(node['nid'])
+                    if node['checked']==-1:
+                        colors.append(5)
+                    else:
+                        colors.append(distances[node['nid']])
+                    if node['nid']==selection:
+                        sizes.append(2)
+                    else:
+                        sizes.append(1)
+                    if node['type']==1:
+                        sizes.pop(-1)
+                        sizes.append(8)
 
 
-        for c_node in nbrs:
-            if not self.G.has_node(c_node):
-                continue
-            p1 = self.G.nodes[c_node]['coord']
-            for pid in list(self.G.neighbors(c_node)):
-                p2 = self.G.nodes[pid]['coord']
-                v = [j-i for i,j in zip(p1,p2)]
-                edges.append([p1,v])
 
 
         colors = np.array(colors)
@@ -877,7 +939,7 @@ class Annotator(widgets.Container):
                 self.G.nodes[node_id]['checked'] = 0
             else:
                 self.G.nodes[node_id]['checked'] = -1
-                self.refresh(self.viewer)
+            self.refresh(self.viewer)
 
         elif operation == (1, 'labeling', None): # add/remove edge
             if node_id not in connected_nbrs:
