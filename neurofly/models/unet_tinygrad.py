@@ -104,6 +104,7 @@ class SegNet():
     def preprocess(self,img,percentiles=[0.1,1.0]):
         # input img nparray [0,65535]
         # output img tensor [0,1]
+        d,w,h = img.shape
         img = np.clip(img, a_min=self.bg_thres, a_max=None) - self.bg_thres
         flattened_arr = np.sort(img.flatten())
         clip_low = int(percentiles[0] * len(flattened_arr))
@@ -117,15 +118,16 @@ class SegNet():
         img = (filtered-min_value)/(max_value-min_value)
         img = img.astype(np.float32)
         img = Tensor(img,requires_grad=False)
-        img = img.reshape(1,1,128,128,128)
+        img = img.reshape(1,1,d,w,h)
         return img
 
 
     def get_mask(self,img,thres=0.5):
+        d,w,h = img.shape
         img_in = self.preprocess(img)
         if img_in is not None:
             tensor_out = self.model(img_in)
-            prob = tensor_out.reshape(128,128,128)
+            prob = tensor_out.reshape(d,w,h)
             if thres==None:
                 return prob.numpy()
             else:

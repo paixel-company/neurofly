@@ -30,7 +30,7 @@ class Annotator(widgets.Container):
         # labeling mode
         self.image_layer = self.viewer.add_image(np.ones((64, 64, 64), dtype=np.uint16),name='image',visible=False)
         self.point_layer = self.viewer.add_points(None,ndim=3,size=None,shading='spherical',border_width=0,properties=None,face_colormap='hsl',name='points',visible=False)
-        self.edge_layer = self.viewer.add_vectors(None,ndim=3,name='added edges',vector_style='triangle',visible=False)
+        self.edge_layer = self.viewer.add_vectors(None,ndim=3,name='added edges',vector_style='triangle',visible=False, edge_color='orange',opacity=1.0)
         self.ex_edge_layer = self.viewer.add_vectors(None,ndim=3,name='existing edges',vector_style='line',visible=False,edge_width=0.3,opacity=1)
         # ------------------------
 
@@ -629,16 +629,18 @@ class Annotator(widgets.Container):
                     break
             # update panorama image layer
             roi = self.image.rois[i]
-            spacing = self.image.info[i]['spacing']
+            roi_level_0 = self.image.rois[0]
+            spacing = [i/j for i,j in zip(roi_level_0[3:],roi[3:])]
             image = self.image.from_roi(roi, level=level, channel=int(self.channel.value))
             self.panorama_image.data = image
+            # TODO: for anisotropic image
             self.panorama_image.scale = spacing
             self.panorama_image.visible = True
             self.panorama_image.reset_contrast_limits()
         
         # load full image if it's tiff format
         if '.tif' in str(self.image_path.value) and self.image_switch.value == True: 
-            image = self.image.from_roi(self.image.roi, level=0, channel=int(self.channel.value)) 
+            image = self.image.from_roi(self.image.roi) 
             self.panorama_image.data = image
             self.panorama_image.visible = True
             self.panorama_image.reset_contrast_limits()

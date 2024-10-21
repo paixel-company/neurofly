@@ -179,7 +179,7 @@ class ZipZarr():
         return np.transpose(self.images[level][z_slice,y_slice,x_slice],(2,1,0))
 
 
-    def from_roi(self, coords, level=0, padding='constant'):
+    def from_roi(self, coords, level=0, channel=0,padding='constant'):
         # coords: [x_offset,y_offset,z_offset,x_size,y_size,z_size]
         coords = [int(coord) for coord in coords]
         x_min, x_max = coords[0], coords[3]+coords[0]
@@ -267,7 +267,7 @@ class Tiff():
         z_slice = slice(z_min-self.roi[2],z_max-self.roi[2])
         return self.image[x_slice,y_slice,z_slice]
 
-    def from_roi(self, coords, padding='constant'):
+    def from_roi(self, coords, level=0, channel=0, padding='constant'):
         # coords: [x_offset,y_offset,z_offset,x_size,y_size,z_size]
         coords = [int(coord) for coord in coords]
         x_min, x_max = coords[0], coords[3]+coords[0]

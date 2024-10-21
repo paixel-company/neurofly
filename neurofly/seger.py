@@ -22,8 +22,8 @@ from neurofly.common import SegNet, Deconver
 class Seger():
     def __init__(self,ckpt_path,bg_thres=200):
         self.seg_net = SegNet(ckpt_path,bg_thres)
-        # border width (128-100)//2
-        self.bw = 14
+        # border width
+        self.bw = 4
 
 
     def postprocess(self,mask,min_size=50):
@@ -37,7 +37,7 @@ class Seger():
 
     def get_large_mask(self,img,dec=None):
         '''
-        process one large volume(D,W,H>100) with border (default 14), return mask
+        process one large volume(D,W,H>100) with border (default 4), return mask
         '''
         block_size = 100
         border_size = self.bw
@@ -357,7 +357,7 @@ class SegerGUI(widgets.Container):
     def on_segmentation_finished(self, segs):
         db_path = str(self.save_dir.value)
         if db_path != '.':
-            print(f"Saving {len(segs)} segments to {db_path}")
+            show_info(f"Saving {len(segs)} segments to {db_path}")
             segs2db(segs, db_path)
 
         seg_points = [seg['sampled_points'] for seg in segs]
@@ -443,7 +443,8 @@ def command_line_interface():
     print(f"Using weight: {args.weight_path}")
     print(f"Processing image: {args.image_path}, roi: {args.roi}")
 
-    seger = Seger(args.weight_path,bg_thres=args.bg_thres) # bg_thres is used to filter out empty image like image borders
+    # bg_thres is used to filter out empty image like image borders
+    seger = Seger(args.weight_path,bg_thres=args.bg_thres) 
     if args.deconv:
         dec_weight_path = default_dec_weight_path
         deconver = Deconver(dec_weight_path)
@@ -453,8 +454,8 @@ def command_line_interface():
     segs = seger.process_whole(args.image_path, args.channel, chunk_size=args.chunk_size, splice=args.splice, roi=args.roi, dec=deconver)
 
     if args.db_path is not None:
-        print(f"Saving {len(segs)} segs to {args.db_path}")
         segs2db(segs,args.db_path)
+        show_info(f"Saving {len(segs)} segs to {args.db_path}")
 
 
     if args.vis:
