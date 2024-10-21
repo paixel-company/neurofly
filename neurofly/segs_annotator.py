@@ -858,7 +858,7 @@ class Annotator(widgets.Container):
         max_rows_per_file = 200000  # Maximum number of rows per file
         current_row_count = 0       # Counter for current file's row count
         file_index = 1              # Index to track the file number
-        csv_data = [["node_id", "type", "x", "y", "z", "radius", "parent_id", "brain"]]  # Initial header
+        csv_data = [["node_id", "type", "x", "y", "z", "radius", "parent_id", "brain", "neuron_id"]]  # Initial header
 
         for cc in connected_components:
             type = 'unknown_'
