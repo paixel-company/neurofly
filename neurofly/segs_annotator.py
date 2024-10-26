@@ -27,6 +27,8 @@ class Annotator(widgets.Container):
         # panorama mode
         self.panorama_image = self.viewer.add_image(np.ones((64, 64, 64), dtype=np.uint16), name='panorama image',visible=False)
         self.panorama_points = self.viewer.add_points(None,ndim=3,size=None,shading='spherical',border_width=0,properties=None,face_colormap='hsl',name='panorama view',blending='additive',visible=True)
+        self.panorama_points.click_get_value = self.panorama_points.get_value
+        self.panorama_points.get_value = lambda position, view_direction=None, dims_displayed=None, world=False: None
         # labeling mode
         self.image_layer = self.viewer.add_image(np.ones((64, 64, 64), dtype=np.uint16),name='image',visible=False)
         self.point_layer = self.viewer.add_points(None,ndim=3,size=None,shading='spherical',border_width=0,properties=None,face_colormap='hsl',name='points',visible=False)
@@ -278,7 +280,6 @@ class Annotator(widgets.Container):
             return
         self.num_branches += 1
         self.refresh(self.viewer)
-
 
 
     def show_less_branches(self, viewer):
@@ -788,7 +789,7 @@ class Annotator(widgets.Container):
         # this is appended to panorama_points layer
         if event.button == 1:
             # remove all connected points
-            index = layer.get_value(
+            index = layer.click_get_value(
                 event.position,
                 view_direction = event.view_direction,
                 dims_displayed=event.dims_displayed,
