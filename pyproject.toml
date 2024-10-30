@@ -33,6 +33,9 @@ dependencies = [
     "zarr"
 ]
 
+[project.urls]
+"Homepage" = "https://github.com/beanli161514/neurofly"
+
 # Defining optional dependencies (not provided but can be added)
 [project.optional-dependencies]
 # Add optional dependencies if needed (e.g., gui = ["package_for_gui"])
