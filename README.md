@@ -99,23 +99,25 @@ In each task, a center node and nearby segments are rendered, you can add/remove
 
 
 Left click on nodes to add/remove an edge between it and the center node
+
 <img src="assets/add_edges.gif" width="480">
 
 Right click to remove a node
-<img src="assets/remove_nodes.gif" width="480">
 
+<img src="assets/remove_nodes.gif" width="480">
 
 Press 'g' or use left panel to switch to 'image' layer, then right click to add points
 
 <img src="assets/add_nodes.gif" width="480">
-
 
 Use dropdown selection in right panel to add type label for center node.
 
 <img src="assets/change_type.gif" width="480">
 
 #### Deconvolution
+
 Press 'i' or click on 'deconvolution' to deconvolve the image
+
 <img src="assets/deconv.gif" width="640">
 
 
