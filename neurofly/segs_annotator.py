@@ -73,15 +73,19 @@ class Annotator(widgets.Container):
         self.viewer.bind_key('r', self.recover, overwrite=True)
         self.viewer.bind_key('g', self.switch_layer, overwrite=True)
         self.viewer.bind_key('d', self.refresh, overwrite=True)
-        self.viewer.bind_key('f', self.submit_result, overwrite=True)
-        self.viewer.bind_key('w', self.connect_one_nearest, overwrite=True)
-        self.viewer.bind_key('e', self.connect_two_nearest, overwrite=True)
-        self.viewer.bind_key('b', self.last_task, overwrite=True)
-        self.viewer.bind_key('n', self.get_next_task, overwrite=True)
         self.viewer.bind_key('i', self.deconvolve, overwrite=True)
-        self.viewer.bind_key('c', self.purge, overwrite=True)
-        self.viewer.bind_key('Up', self.show_more_branches , overwrite=True)
-        self.viewer.bind_key('Down', self.show_less_branches , overwrite=True)
+        self.point_layer.bind_key('f', self.submit_result, overwrite=True)
+        self.point_layer.bind_key('w', self.connect_one_nearest, overwrite=True)
+        self.point_layer.bind_key('e', self.connect_two_nearest, overwrite=True)
+        self.point_layer.bind_key('b', self.last_task, overwrite=True)
+        self.point_layer.bind_key('n', self.get_next_task, overwrite=True)
+        self.point_layer.bind_key('c', self.purge, overwrite=True)
+        self.point_layer.bind_key('Up', self.show_more_branches , overwrite=True)
+        self.point_layer.bind_key('Down', self.show_less_branches , overwrite=True)
+
+        self.point_layer.bind_key('0', self.label_undefined, overwrite=True)
+        self.point_layer.bind_key('1', self.label_soma, overwrite=False)
+        self.point_layer.bind_key('8', self.label_ambiguous, overwrite=True)
 
         self.panorama_points.mouse_drag_callbacks.append(self.node_selection)
         self.point_layer.mouse_drag_callbacks.append(self.node_operations)
@@ -181,6 +185,53 @@ class Annotator(widgets.Container):
             self.next_task_button,
             self.submit_button
         ])
+
+
+
+    def label_undefined(self, viewer):
+        if self.mode_switch.mode == 'panorama':
+            show_info("switch to labeling mode")
+            return
+        node_id = int(self.selected_node.value)
+        type_idx = 0
+        self.node_type_dropdown.changed.disconnect(self.on_changing_type)
+        self.node_type_dropdown.value = self.node_types[type_idx]
+        self.node_type_dropdown.changed.connect(self.on_changing_type)
+        change_type(str(self.db_path.value),node_id,type_idx)
+        self.G.nodes[node_id]['type'] = type_idx
+        show_info(f"{node_id} labeled as {str(self.node_type_dropdown.value)}")
+        self.refresh(self.viewer)
+
+
+    def label_soma(self, viewer):
+        if self.mode_switch.mode == 'panorama':
+            show_info("switch to labeling mode")
+            return
+        node_id = int(self.selected_node.value)
+        type_idx = 1
+        self.node_type_dropdown.changed.disconnect(self.on_changing_type)
+        self.node_type_dropdown.value = self.node_types[type_idx]
+        self.node_type_dropdown.changed.connect(self.on_changing_type)
+        change_type(str(self.db_path.value),node_id,type_idx)
+        self.G.nodes[node_id]['type'] = type_idx
+        show_info(f"{node_id} labeled as {str(self.node_type_dropdown.value)}")
+        self.refresh(self.viewer)
+
+
+    def label_ambiguous(self, viewer):
+        if self.mode_switch.mode == 'panorama':
+            show_info("switch to labeling mode")
+            return
+        node_id = int(self.selected_node.value)
+        type_idx = 7
+        self.node_type_dropdown.changed.disconnect(self.on_changing_type)
+        self.node_type_dropdown.value = self.node_types[type_idx]
+        self.node_type_dropdown.changed.connect(self.on_changing_type)
+        change_type(str(self.db_path.value),node_id,type_idx)
+        self.G.nodes[node_id]['type'] = type_idx
+        show_info(f"{node_id} labeled as {str(self.node_type_dropdown.value)}")
+        self.refresh(self.viewer)
+
 
     def on_reading_image(self):
         self.image = wrap_image(str(self.image_path.value))
@@ -649,8 +700,13 @@ class Annotator(widgets.Container):
             if len(added_nodes)>0:
                 add_nodes(path,added_nodes)
 
-            if len(self.added['edges'])>0:
-                add_edges(path,self.added['edges'],self.user_name.value)
+            added_edges = []
+            for edge in self.added['edges']:
+                if edge[0] not in deleted_nodes and edge[1] not in deleted_nodes:
+                    added_edges.append(edge)
+
+            if len(added_edges)>0:
+                add_edges(path, added_edges, self.user_name.value)
 
             check_node(path,int(self.selected_node.value))
 
