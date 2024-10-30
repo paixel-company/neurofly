@@ -71,6 +71,11 @@ or use the graphical interface
 This process may take about 10 hours depending on your you hardware configuration. When finished, you should see the extracted segments and a database file named z002.db in your working dictionary.
 
 
+An image block with severe contamination and the segmentation result
+
+<img align src="assets/segmentation.gif" width="640">
+
+
 ### Manual connection and proofreading
 
 Launch annotation tool from napari menu, Plugin -> neurofly -> Segs Annotator
