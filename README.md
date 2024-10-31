@@ -6,8 +6,13 @@ This package provides tools for semi-automatic neuron reconstruction. Features b
 
 ## Installation
 
+Install the latest version
 ```
 pip install --upgrade git+https://github.com/beanli161514/neurofly.git
+```
+or
+```
+pip install neurofly
 ```
 
 ## Dataset
@@ -49,11 +54,11 @@ Segments are results of the segmentation stage, they are used to generate initia
 
 ## Basic usage example
 
-<img src="assets/pipeline.png" width="640">
+<img src="https://github.com/beanli161514/neurofly/raw/main/assets/pipeline.png" width="640">
 
 NeuroFly packaged 4 napari plugins for image browsing, image segmentation, and data annotation.
 
-<img src="assets/menu.png" width="320">
+<img src="https://github.com/beanli161514/neurofly/raw/main/assets/menu.png" width="320">
 
 ### Segmentation
 
@@ -65,7 +70,7 @@ seg -i z002.ims -vis -d z002.db
 ```
 or use the graphical interface
 
-<img align src="assets/neuron_seger.png" width="200">
+<img align src="https://github.com/beanli161514/neurofly/raw/main/assets/neuron_seger.png" width="200">
 
 
 This process may take about 10 hours depending on your you hardware configuration. When finished, you should see the extracted segments and a database file named z002.db in your working dictionary.
@@ -73,7 +78,7 @@ This process may take about 10 hours depending on your you hardware configuratio
 
 An image block with severe contamination and the segmentation result
 
-<img align src="assets/segmentation.gif" width="640">
+<img align src="https://github.com/beanli161514/neurofly/raw/main/assets/segmentation.gif" width="640">
 
 
 ### Manual connection and proofreading
@@ -83,7 +88,7 @@ Launch annotation tool from napari menu, Plugin -> neurofly -> Segs Annotator
 #### Load data
 Load image file (z002.ims) and database file (z002.db), then click **refresh panorama** button to show the panorama view.
 
-<img src="assets/overall.png" width="600">
+<img src="https://github.com/beanli161514/neurofly/raw/main/assets/overall.png" width="600">
 
 
 #### Select one node as start point of annotation
@@ -95,45 +100,45 @@ If you can clearly identify foreground segments, click on one of the conspicuous
 #### Task generation
 Given a selected node, task generator analyses its connected component and extract all unchecked terminal nodes. The tasks are designed very simple: Connect the center node with the surrounding nodes if there should be an edge. The criterion is whether the edge aligns well with the imaged neuron fibers.
 
-<img src="assets/task_generation.png" width="480">
+<img src="https://github.com/beanli161514/neurofly/raw/main/assets/task_generation.png" width="480">
 
 
 #### Node operations
-<img src="assets/labeling_mode.png" width="480">
+<img src="https://github.com/beanli161514/neurofly/raw/main/assets/labeling_mode.png" width="480">
 
 In each task, a center node and nearby segments are rendered, you can add/remove nodes and edges to get a reasonable local structure.
 
 
 Left click on nodes to add/remove an edge between it and the center node
 
-<img src="assets/add_edges.gif" width="480">
+<img src="https://github.com/beanli161514/neurofly/raw/main/assets/add_edges.gif" width="480">
 
 Right click to remove a node
 
-<img src="assets/remove_nodes.gif" width="480">
+<img src="https://github.com/beanli161514/neurofly/raw/main/assets/remove_nodes.gif" width="480">
 
 Press 'g' or use left panel to switch to 'image' layer, then right click to add points
 
-<img src="assets/add_nodes.gif" width="480">
+<img src="https://github.com/beanli161514/neurofly/raw/main/assets/add_nodes.gif" width="480">
 
 Use dropdown selection in right panel to add type label for center node.
 
-<img src="assets/change_type.gif" width="480">
+<img src="https://github.com/beanli161514/neurofly/raw/main/assets/change_type.gif" width="480">
 
 #### Deconvolution
 
 Press 'i' or click on 'deconvolution' to deconvolve the image
 
-<img src="assets/deconv.gif" width="640">
+<img src="https://github.com/beanli161514/neurofly/raw/main/assets/deconv.gif" width="640">
 
 
 #### Proofreading
 
 If you find something wrong when labeling, for example, two somas are connected together. You can use proofreading mode to check the neuron branch by branch.
-<img src="assets/proofreading.gif" width="640">
+<img src="https://github.com/beanli161514/neurofly/raw/main/assets/proofreading.gif" width="640">
 
 
 
 ### Export as swc file
 Switch to panorama mode, adjust 'length_thres' to filter out short segments and keep only complete neurons. Then press 'export swc files', each neuron will be saved as one .swc file in your working dictionary.
-<img src="assets/export.jpg" width="640">
+<img src="https://github.com/beanli161514/neurofly/raw/main/assets/export.jpg" width="640">
