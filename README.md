@@ -2,7 +2,7 @@
 
 This package provides tools for semi-automatic neuron reconstruction. Features based on deep learning, like image segmentation and deconvolution are implemented in [tinygrad](https://github.com/tinygrad/tinygrad), which can run on almost any GPU (NVIDIA, AMD, Apple, Qualcomm, Intel).
 
-<img src="assets/main.png" width="640">
+<img src="https://github.com/beanli161514/neurofly/raw/main/assets/main.png" width="640">
 
 ## Installation
 
