@@ -62,11 +62,11 @@ NeuroFly packaged 4 napari plugins for image browsing, image segmentation, and d
 
 ### Segmentation
 
-NeuroFly supports whole brain image saved in hierarchical data structures(ims, h5, and zarr) in [Imaris File Format](https://imaris.oxinst.com/support/imaris-file-format) and small image volumes saved in single-channel tiff format. Here we use a mouse brain in our dataset named z002.ims as example.
+NeuroFly supports whole brain image saved in hierarchical data structures(ims, h5, and zarr) in [Imaris File Format](https://imaris.oxinst.com/support/imaris-file-format) and small image volumes saved in single-channel tiff format. Here we use a mouse brain in our dataset named z002.zarr.zip as example.
 
 This brain is sparsely labeled, which means only a tiny puny part of neurons are lighted and imaged. To extract these foreground singals, you can use the provided command line interface 'seg'. We provide a default weight trained on images captured by VISoR and fMOST.
 ```
-seg -i z002.ims -vis -d z002.db
+seg -i z002.zarr.zip -vis -d z002.db
 ```
 or use the graphical interface
 
@@ -86,7 +86,7 @@ An image block with severe contamination and the segmentation result
 Launch annotation tool from napari menu, Plugin -> neurofly -> Segs Annotator
 
 #### Load data
-Load image file (z002.ims) and database file (z002.db), then click **refresh panorama** button to show the panorama view.
+Load image file (z002.zarr.zip) and database file (z002.db), then click **refresh panorama** button to show the panorama view.
 
 <img src="https://github.com/beanli161514/neurofly/raw/main/assets/overall.png" width="600">
 
