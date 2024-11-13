@@ -238,7 +238,7 @@ class ZipZarr():
                     'dims_physical':dims_physical,
                     'image_size':dims_data,
                     'data_shape':[data.shape[2],data.shape[1],data.shape[0]],
-                    'data_chunks':data.chunks,
+                    'data_chunks':[data.chunks[2],data.chunks[1],data.chunks[0]],
                     'spacing':spacing,
                     'origin':origin
                 }

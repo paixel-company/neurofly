@@ -746,17 +746,23 @@ class Annotator(widgets.Container):
                 if (np.array(roi[3:])<np.array([1000,1000,1000])).all():
                     level = i
                     break
-            # update panorama image layer
+            '''
             roi = self.image.rois[i]
             if 'spacing' in self.image.info[i].keys():
                 spacing = self.image.info[i]['spacing']
             else:
                 roi_level_0 = self.image.rois[0]
                 spacing = [i/j for i,j in zip(roi_level_0[3:],roi[3:])]
+            '''
+            # calculate scale
+            hr_image_size = self.image.info[0]['image_size']
+            lr_image_size = self.image.info[level]['image_size']
+            scale = [i/j for i,j in zip(hr_image_size,lr_image_size)]
+
             image = self.image.from_roi(roi, level=level, channel=int(self.channel.value))
             self.panorama_image.data = image
             # TODO: for anisotropic image
-            self.panorama_image.scale = spacing
+            self.panorama_image.scale = scale
             self.panorama_image.visible = True
             self.panorama_image.reset_contrast_limits()
         
