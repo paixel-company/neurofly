@@ -139,6 +139,15 @@ If you find something wrong when labeling, for example, two somas are connected 
 
 
 
+### Performance
+NeuroFly supports rendering of more than ten million points. (tested on M3 Macbook Air and RTX 3090 workstation)
+
+<img src="https://github.com/beanli161514/neurofly/raw/main/assets/dense.jpg" width="640">
+
+
+
 ### Export as swc file
 Switch to panorama mode, adjust 'length_thres' to filter out short segments and keep only complete neurons. Then press 'export swc files', each neuron will be saved as one .swc file in your working dictionary.
+
+
 <img src="https://github.com/beanli161514/neurofly/raw/main/assets/export.jpg" width="640">

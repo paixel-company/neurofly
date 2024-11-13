@@ -1,6 +1,6 @@
 [project]
 name = "neurofly"
-version = "0.1.1"
+version = "0.1.2"
 description = "A framework to annotate single neurons at whole-brain scale"
 authors = [
     { name="Rubin Zhao", email="beanli161514@gmail.com" }
