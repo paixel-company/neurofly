@@ -1,6 +1,7 @@
 import argparse
 import numpy as np
 import networkx as nx
+from rtree import index
 import napari
 from scipy.spatial.distance import cdist
 from skimage.morphology import skeletonize
@@ -173,6 +174,87 @@ class Seger():
         return skel, segments
 
 
+    def connect_segs(self, segs):
+        p = index.Property(dimension=3)
+        rtree = index.Index(properties=p)
+
+        G = nx.Graph()
+        nid_offset = 0
+        for seg in segs:
+            # points = seg['sampled_points']
+            points = seg['points']
+            if len(points)>=2:
+                # node
+                for idx, coord in enumerate(points):
+                    nid = idx + nid_offset
+                    G.add_node(nid, nid=nid, coord=coord)
+                    rtree.insert(nid, tuple(list(coord) + list(coord)), obj=[nid, coord])
+                # edge
+                for src, tgt in zip(range(0,len(points)-1), range(1,len(points))):
+                    src_nid = src + nid_offset
+                    tgt_nid = tgt + nid_offset
+                    G.add_edge(src_nid, tgt_nid)
+            else:
+                nid = 0 + nid_offset
+                G.add_node(nid, nid=nid, coord=points[0])
+            nid_offset += len(points)
+        
+        dist_threshold = 12
+        degree_threshold = 40
+        end_nodes = [node for node, degree in G.degree() if degree==1]
+        for end_nid in end_nodes:
+            if G.degree[end_nid]>1:
+                continue
+            curr_path = [end_nid] + [des for src, des in list(nx.dfs_edges(G, end_nid, depth_limit=6))]
+            curr_coords = np.asarray([G.nodes[nid]['coord'] for nid in curr_path])
+            offset = [i-dist_threshold//2 for i in curr_coords[0]]
+            roi = offset + [i+dist_threshold for i in offset]
+            curr_direction = np.sum(curr_coords[:-1:3] - curr_coords[1::3], axis=0)
+            curr_direction = curr_direction / np.linalg.norm(curr_direction)
+
+            nbr_nid_list = set(rtree.intersection(tuple(roi), objects=False)) - set(curr_path)
+            nbr_nid_list = [nid for nid in nbr_nid_list if G.degree[nid]==1]
+            matched_nbr = None
+            min_degree = degree_threshold
+            for nbr_nid in nbr_nid_list:
+                nbr_path = [nbr_nid] + [des for src, des in list(nx.dfs_edges(G, nbr_nid, depth_limit=6))]
+                nbr_coords = np.asarray([G.nodes[nid]['coord'] for nid in nbr_path])
+                nbr_direction = np.sum(nbr_coords[1::3] - nbr_coords[:-1:3], axis=0)
+                nbr_direction = nbr_direction / np.linalg.norm(nbr_direction)
+
+                norm = np.linalg.norm(curr_direction)*np.linalg.norm(nbr_direction)
+                degree = np.degrees(np.arccos(np.clip(np.dot(curr_direction, nbr_direction)/norm, -1.0, 1.0)))
+                if degree <= min_degree:
+                    min_degree = degree
+                    matched_nbr = nbr_nid
+
+            if matched_nbr is not None:
+                G.add_edge(end_nid, matched_nbr)
+
+        segments = []
+        connected_components = list(nx.connected_components(G))
+        interval = 3
+        for cc in connected_components:
+            if len(cc)<=interval*2:
+                continue
+            subgraph = G.subgraph(cc).copy()
+            end_nodes = [node for node, degree in subgraph.degree() if degree == 1]
+            if (len(end_nodes)!=2):
+                continue
+            path = nx.shortest_path(subgraph, source=end_nodes[0], target=end_nodes[1], weight=None, method='dijkstra') 
+            # path to segment
+            points = np.array([G.nodes[nid]['coord'] for nid in path]).tolist()
+            sampled_points = points[:-(interval-1):interval]
+            sampled_points.append(points[-1])
+            segments.append(
+                {
+                    'sid' : None,
+                    'points' : points,
+                    'sampled_points' : sampled_points
+                }
+            )
+        return segments
+
 
     def process_whole(self,image_path,channel=0,chunk_size=300,splice=100000,roi=None,dec=None):
         '''
@@ -208,6 +290,7 @@ class Seger():
             _, segs_in_block = self.mask_to_segs(mask,offset=offset)
             segs+=segs_in_block
 
+        segs = self.connect_segs(segs)
         for i, seg in enumerate(segs):
             seg['sid'] = i
 
@@ -417,6 +500,7 @@ class SegerGUI(widgets.Container):
 
             yield (idx+1, total_rois, segs_in_block)
 
+        segs = self.seger.connect_segs(segs)
         for i, seg in enumerate(segs):
             seg['sid'] = i
 

@@ -120,7 +120,7 @@ class SegNet():
         elif 'dumpy' in ckpt_path:
             model_dims = [64,128,256]
         model = UNet(1, 1, model_dims, norm_type='batch', dim=3)
-        ckpt = torch.load(ckpt_path, map_location='cpu')
+        ckpt = torch.load(ckpt_path, map_location='cpu', weights_only=False)
         if 'model' in ckpt.keys():
             model.load_state_dict({k.replace('module.',''):v for k,v in ckpt['model'].items()})
             torch.save(ckpt['model'], ckpt_path)
