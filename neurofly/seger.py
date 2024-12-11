@@ -273,7 +273,7 @@ class Seger():
                 if 'tif' in image_path:
                     img = image.from_roi(roi,padding='reflect')
                 else:
-                    img = image.from_roi(roi,0,channel,padding='reflect') 
+                    img = image.from_roi(roi,level,channel,padding='reflect') 
                 if dec is not None:
                     img = dec.process_one(img)
                 mask = self.seg_net.get_mask(img)
