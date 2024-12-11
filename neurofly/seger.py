@@ -256,13 +256,13 @@ class Seger():
         return segments
 
 
-    def process_whole(self,image_path,channel=0,chunk_size=300,splice=100000,roi=None,dec=None):
+    def process_whole(self,image_path,level=0,channel=0,chunk_size=300,splice=100000,roi=None,dec=None):
         '''
         cut whole brain image to [300,300,300] cubes without splices (z coordinates % 300 == 0)
         '''
         image = wrap_image(image_path)
         if roi==None:
-            image_roi = image.roi
+            image_roi = image.rois[level]
         else:
             image_roi = roi
         rois = patchify_without_splices(image_roi,chunk_size,splices=splice)
@@ -284,7 +284,7 @@ class Seger():
                 if 'tif' in image_path:
                     padded_block = image.from_roi(roi,padding='reflect')
                 else:
-                    padded_block = image.from_roi(roi,0,channel,padding='reflect') 
+                    padded_block = image.from_roi(roi,level,channel,padding='reflect') 
                 mask = self.get_large_mask(padded_block,dec)
                 offset=[i+self.bw for i in roi[:3]]
             _, segs_in_block = self.mask_to_segs(mask,offset=offset)
@@ -486,7 +486,7 @@ class SegerGUI(widgets.Container):
         dec = self.deconver if self.use_deconv.value else None
 
         image = wrap_image(image_path)
-        image_roi = roi if roi else image.roi
+        image_roi = roi if roi else image.rois[0]
 
         rois = patchify_without_splices(image_roi, chunk_size, splices=splice)
         total_rois = len(rois)
@@ -512,7 +512,7 @@ class SegerGUI(widgets.Container):
                 if 'tif' in image_path:
                     padded_block = image.from_roi(roi_padded,padding='reflect')
                 else:
-                    padded_block = image.from_roi(roi_padded,0,int(self.channel.value),padding='reflect') 
+                    padded_block = image.from_roi(roi_padded,int(self.level.value),int(self.channel.value),padding='reflect') 
                 mask = self.seger.get_large_mask(padded_block, dec)
                 offset = [roi[0], roi[1], roi[2]]
 
@@ -557,7 +557,7 @@ def command_line_interface():
     else:
         deconver = None
 
-    segs = seger.process_whole(args.image_path, args.channel, chunk_size=args.chunk_size, splice=args.splice, roi=args.roi, dec=deconver)
+    segs = seger.process_whole(args.image_path, args.level, args.channel, chunk_size=args.chunk_size, splice=args.splice, roi=args.roi, dec=deconver)
 
     if args.db_path is not None:
         segs2db(segs,args.db_path)
@@ -574,7 +574,7 @@ def command_line_interface():
             if 'tif' in args.image_path:
                 img = image.from_roi(args.roi,padding='reflect')
             else:
-                img = image.from_roi(args.roi,0,args.channel,padding='reflect') 
+                img = image.from_roi(args.roi,args.level,args.channel,padding='reflect') 
             image_layer = viewer.add_image(img)
             image_layer.translate = args.roi[0:3]
         else:

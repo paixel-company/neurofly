@@ -306,14 +306,4 @@ def wrap_image(image_path):
 
 
 if __name__ == '__main__':
-    file_path = '/Volumes/TU200 Pro/datasets/export-volume.ims'
-    file = Ims(file_path)
-    print(file.info[0])
-    print(file.info[1])
-    print(file.info[2])
-    print(file.rois)
-    print(file.extension)
-    roi = [16000,9000,1000,300,300,300]
-    image = file.from_roi(roi,0,0)
-    print(image.shape)
-    print(file.rois[-1])
+    pass
