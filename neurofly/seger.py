@@ -320,6 +320,7 @@ class SegerGUI(widgets.Container):
         self.y = widgets.LineEdit(label="y offset", value=0)
         self.z = widgets.LineEdit(label="z offset", value=0)
         self.channel = widgets.LineEdit(label="image channel", value=0)
+        self.level = widgets.LineEdit(label="resolution level", value=0)
         self.chunk_size = widgets.LineEdit(label="chunk size", value=300)
         self.bg_thres = widgets.LineEdit(label="background value", value=300)
         self.splices = widgets.LineEdit(label="z-splice", value=100000) 
@@ -329,12 +330,13 @@ class SegerGUI(widgets.Container):
         self.deconver_weight_path = widgets.FileEdit(label="deconver weight")
         self.use_deconv = widgets.CheckBox(value=False,text='deconvolve before segment')
         self.progress_bar = widgets.ProgressBar(min=0, max=100, value=0)
-        self.show_progress = widgets.CheckBox(value=False,text="show progress")
+        self.show_progress = widgets.CheckBox(value=True,text="show progress")
 
         seger_weight_path = default_seger_weight_path
         deconver_weight_path = default_dec_weight_path
         self.image_path.changed.connect(self.on_image_reading)
         self.image_type.changed.connect(self.switch_image_type)
+        self.level.changed.connect(self.on_changing_level)
         self.seger_weight_path.changed.connect(self.load_seger)
         self.deconver_weight_path.changed.connect(self.load_deconver)
         self.seger_weight_path.value = seger_weight_path
@@ -355,6 +357,7 @@ class SegerGUI(widgets.Container):
             self.z,
             self.splices,
             self.channel,
+            self.level,
             self.bg_thres,
             self.chunk_size,
             self.use_deconv,
@@ -362,6 +365,21 @@ class SegerGUI(widgets.Container):
             self.run_button,
             self.progress_bar
             ])
+
+
+    def on_changing_level(self,event):
+        self.viewer.layers.remove(self.viewer.layers['Shapes']) 
+        x_offset,y_offset,z_offset,x_size,y_size,z_size = self.image.rois[int(self.level.value)]
+        self.x.value = x_offset
+        self.y.value = y_offset
+        self.z.value = z_offset
+        self.x_size.max = x_size
+        self.y_size.max = y_size
+        self.z_size.max = z_size
+        self.x_size.value = x_size
+        self.y_size.value = y_size
+        self.z_size.value = z_size
+        draw_frame(self.image.rois[int(self.level.value)], self.viewer, color='white')
 
 
     def switch_image_type(self,event):
@@ -372,8 +390,10 @@ class SegerGUI(widgets.Container):
 
 
     def on_image_reading(self):
+        if 'ims' not in str(self.image_path.value):
+            return
         self.image = wrap_image(str(self.image_path.value))
-        x_offset,y_offset,z_offset,x_size,y_size,z_size = self.image.roi
+        x_offset,y_offset,z_offset,x_size,y_size,z_size = self.image.rois[int(self.level.value)]
         self.x.value = x_offset
         self.y.value = y_offset
         self.z.value = z_offset
@@ -383,7 +403,7 @@ class SegerGUI(widgets.Container):
         self.x_size.value = x_size
         self.y_size.value = y_size
         self.z_size.value = z_size
-        draw_frame(self.image.roi, self.viewer, color='white')
+        draw_frame(self.image.rois[0], self.viewer, color='white')
 
 
     def load_deconver(self):
@@ -445,7 +465,8 @@ class SegerGUI(widgets.Container):
 
         seg_points = [seg['sampled_points'] for seg in segs]
         show_segs_as_instances(seg_points, self.viewer)
-        self.viewer.layers.remove(self.points_layer)
+        if self.show_progress.value == True:
+            self.viewer.layers.remove(self.points_layer)
         self.points_layer = None
 
 
@@ -516,6 +537,7 @@ def command_line_interface():
     parser.add_argument('-bg_thres', type=int, default=150, help="ignore images with maximum intensity smaller than this")
     parser.add_argument('-chunk_size', type=int, default=300, help="image size for skeletonization")
     parser.add_argument('-channel', type=int, default=0, help="channel index of ims image")
+    parser.add_argument('-level', type=int, default=0, help="resolution level")
     parser.add_argument('-splice', type=int, default=300, help="set this value if your image contain  at certain interval on z axis")
     parser.add_argument('-vis', action='store_true', default=False, help="whether to visualize result after segmentation")
     parser.add_argument('-path', action='store_true', default=True, help="whether to visualize result as paths")

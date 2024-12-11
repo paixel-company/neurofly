@@ -17,6 +17,7 @@ class SimpleViewer(widgets.Container):
         self.goal_layer = self.viewer.add_points(ndim=3,face_color='red',size=1,shading='spherical',name='goal')
         self.add_callback()
         self.image = None
+        self.previous_level = 0
 
     def add_callback(self):
         self.viewer.bind_key('f', self.refresh, overwrite=True)
@@ -88,11 +89,27 @@ class SimpleViewer(widgets.Container):
 
 
     def on_resolution_change(self, event):
-        if isinstance(self.channel_dropdown.value,str):
+        if isinstance(self.resolution_dropdown.value,str):
+            cx = int(float(self.x.value)) + self.x_size.value//2
+            cy = int(float(self.y.value)) + self.y_size.value//2
+            cz = int(float(self.z.value)) + self.z_size.value//2
+            cl = self.previous_level
+            tl = self.image.resolution_levels.index(self.resolution_dropdown.value)
+            self.previous_level = tl
+            c_spacing = self.image.info[cl]['spacing']
+            t_spacing = self.image.info[tl]['spacing']
+            scale = [i/j for i,j in zip(c_spacing,t_spacing)]
+            tx = int(cx*scale[0])
+            ty = int(cy*scale[1])
+            tz = int(cz*scale[2])
+            self.x.value = tx - self.x_size.value//2
+            self.y.value = ty - self.y_size.value//2
+            self.z.value = tz - self.z_size.value//2
+            self.goal_layer.data = [tx,ty,tz]
             self.refresh()
 
     def on_channel_change(self, event):
-        if isinstance(self.resolution_dropdown.value,str):
+        if isinstance(self.channel_dropdown.value,str):
             self.refresh()
 
     def switch_image_type(self,event):
@@ -104,17 +121,22 @@ class SimpleViewer(widgets.Container):
 
     def on_image_reading(self):
         self.image = wrap_image(str(self.image_path.value))
-        x_offset,y_offset,z_offset,x_size,y_size,z_size = self.image.roi
-        self.x.value = (x_offset+x_size)//2
-        self.y.value = (y_offset+y_size)//2
-        self.z.value = (z_offset+z_size)//2
+
+        x_offset,y_offset,z_offset,x_size,y_size,z_size = self.image.rois[0]
+        self.x.value = x_offset+x_size//2
+        self.y.value = y_offset+y_size//2
+        self.z.value = z_offset+z_size//2
 
         resolution_levels = self.image.resolution_levels
         channels = self.image.channels
+        self.channel_dropdown.changed.disconnect(self.on_channel_change)
         self.channel_dropdown.choices = channels
         self.channel_dropdown.value = channels[0]
+        self.channel_dropdown.changed.connect(self.on_channel_change)
+        self.resolution_dropdown.changed.disconnect(self.on_resolution_change)
         self.resolution_dropdown.choices = resolution_levels
         self.resolution_dropdown.value = resolution_levels[0]
+        self.resolution_dropdown.changed.connect(self.on_resolution_change)
 
         self.refresh()
 
@@ -139,7 +161,6 @@ class SimpleViewer(widgets.Container):
         roi = [int(float(self.x.value)) ,int(float(self.y.value)), int(float(self.z.value)),int(self.x_size.value), int(self.y_size.value), int(self.z_size.value)]
         channel = str(self.channel_dropdown.value)
         resolution_level = str(self.resolution_dropdown.value)
-
         self.image_layer.data = self.image.from_roi(roi, resolution_level, channel)
         self.image_layer.translate = roi[:3]
         camera_state = self.viewer.camera.angles
@@ -155,7 +176,7 @@ class SimpleViewer(widgets.Container):
         image_size = self.image.info[self.image.resolution_levels.index(self.resolution_dropdown.value)]['image_size']
         if min(image_size)>1024:
             return
-        roi = [0,0,0]+image_size 
+        roi = self.image.rois[self.image.resolution_levels.index(self.resolution_dropdown.value)]
         image = self.image.from_roi(roi, self.resolution_dropdown.value, self.channel_dropdown.value)
         self.image_layer.data = image
         self.image_layer.translate = roi[:3]
@@ -174,13 +195,16 @@ class SimpleViewer(widgets.Container):
         if cl==0:
             return
         tl = cl-1
+        self.previous_level = tl
         c_spacing = self.image.info[cl]['spacing']
         t_spacing = self.image.info[tl]['spacing']
         scale = [i/j for i,j in zip(c_spacing,t_spacing)]
+        self.resolution_dropdown.changed.disconnect(self.on_resolution_change)
         self.resolution_dropdown.value = self.image.resolution_levels[tl]
-        tx = int(cx*scale[0]) 
-        ty = int(cy*scale[1]) 
-        tz = int(cz*scale[2]) 
+        self.resolution_dropdown.changed.connect(self.on_resolution_change)
+        tx = int(cx*scale[0])
+        ty = int(cy*scale[1])
+        tz = int(cz*scale[2])
         self.x.value = tx - self.x_size.value//2
         self.y.value = ty - self.y_size.value//2
         self.z.value = tz - self.z_size.value//2
@@ -196,10 +220,13 @@ class SimpleViewer(widgets.Container):
         if cl==len(self.image.rois)-1:
             return
         tl = cl+1
+        self.previous_level = tl
         c_spacing = self.image.info[cl]['spacing']
         t_spacing = self.image.info[tl]['spacing']
         scale = [i/j for i,j in zip(c_spacing,t_spacing)]
+        self.resolution_dropdown.changed.disconnect(self.on_resolution_change)
         self.resolution_dropdown.value = self.image.resolution_levels[tl]
+        self.resolution_dropdown.changed.connect(self.on_resolution_change)
         tx = int(cx*scale[0]) 
         ty = int(cy*scale[1]) 
         tz = int(cz*scale[2]) 

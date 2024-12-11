@@ -99,6 +99,7 @@ class Annotator(widgets.Container):
 
         self.deconv_path = widgets.FileEdit(label="Deconv model weight")
         self.channel = widgets.LineEdit(label="channel", value=0)
+        self.level = widgets.LineEdit(label="resolution level", value=0)
         self.image_switch = widgets.CheckBox(value=False,text='show panorama image')
         self.segs_switch = widgets.CheckBox(value=True,text='show/hide long segments')
         self.refresh_panorama_button = widgets.PushButton(text="refresh panorama")
@@ -148,6 +149,7 @@ class Annotator(widgets.Container):
         self.purge_button.clicked.connect(self.purge)
         self.export_swc_button.clicked.connect(self.export_swc)
         self.node_type_dropdown.changed.connect(self.on_changing_type)
+        self.channel.changed.connect(self.on_changing_channel)
         # ---------------------------
 
         # ------load default model weights-----
@@ -162,6 +164,7 @@ class Annotator(widgets.Container):
             self.image_path,
             self.db_path,
             self.channel,
+            self.level,
             self.export_swc_button,
             self.image_switch,
             self.segs_switch,
@@ -187,6 +190,9 @@ class Annotator(widgets.Container):
         ])
 
 
+    def on_changing_channel(self,viewer):
+        self.panorama_image.scale = [1,1,1]
+        self.refresh_panorama()
 
     def label_undefined(self, viewer):
         if self.mode_switch.mode == 'panorama':
@@ -578,10 +584,10 @@ class Annotator(widgets.Container):
 
 
         if keep_image == False:
-            image = self.image.from_roi([i-self.image_size.value//2 for i in c_coord]+[self.image_size.value,self.image_size.value,self.image_size.value],level=0, channel=int(self.channel.value))
+            image = self.image.from_roi([i-self.image_size.value//2 for i in c_coord]+[self.image_size.value,self.image_size.value,self.image_size.value], level=int(self.level.value), channel=int(self.channel.value))
             translate = [int(i)-self.image_size.value//2 for i in c_coord]
             local_coords = np.array(coords) - np.array(translate)
-            mask = np.all((local_coords>= np.array([0,0,0])) & (local_coords < np.array([self.image_size.value,self.image_size.value,self.image_size.value])), axis=1)
+            mask = np.all((local_coords >= np.array([0,0,0])) & (local_coords < np.array([self.image_size.value, self.image_size.value, self.image_size.value])), axis=1)
             local_coords = local_coords[mask]
             local_coords = local_coords.astype(int)
             # adjust contrast limits according to intensity distribution of foreground points
@@ -824,7 +830,7 @@ class Annotator(widgets.Container):
             'nids': np.array(nids)
         }
         
-        camera_center  = [i + j//2 for i,j in zip(self.image.roi[0:3],self.image.roi[3:])]
+        camera_center  = [i + j//2 for i,j in zip(self.image.rois[int(self.level.value)][0:3],self.image.rois[int(self.level.value)][3:])]
 
         self.panorama_points.visible = True
         self.panorama_points.data = np.array(coords)
