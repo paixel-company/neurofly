@@ -761,14 +761,17 @@ class Annotator(widgets.Container):
                 spacing = [i/j for i,j in zip(roi_level_0[3:],roi[3:])]
             '''
             # calculate scale
-            hr_image_size = self.image.info[0]['image_size']
+            # hr_image_size = self.image.info[0]['image_size']
+            hr_image_size = self.image.info[int(self.level.value)]['image_size']
             lr_image_size = self.image.info[level]['image_size']
             scale = [i/j for i,j in zip(hr_image_size,lr_image_size)]
 
             image = self.image.from_roi(roi, level=level, channel=int(self.channel.value))
+            origin = self.image.info[int(self.level.value)]['origin']
             self.panorama_image.data = image
             # TODO: for anisotropic image
             self.panorama_image.scale = scale
+            self.panorama_image.translate = origin
             self.panorama_image.visible = True
             self.panorama_image.reset_contrast_limits()
         

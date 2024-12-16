@@ -9,7 +9,7 @@ from skimage.measure import label, regionprops
 from tqdm import tqdm
 from magicgui import widgets
 from neurofly.patch import patchify_without_splices, get_patch_rois
-from neurofly.dbio import segs2db
+from neurofly.dbio import segs2db, read_nodes, read_edges, add_edges, delete_edges, uncheck_nodes
 from neurofly.image_reader import wrap_image
 from neurofly.vis import show_segs_as_instances, show_segs_as_paths, draw_frame
 from napari.utils.notifications import show_info
@@ -174,88 +174,94 @@ class Seger():
         return skel, segments
 
 
-    def connect_segs(self, segs):
+    def connect_segs(self, db_path):
+        def _cal_angle(v1:np.ndarray, v2:np.ndarray):
+            norm_v1 = np.linalg.norm(v1)
+            norm_v2 = np.linalg.norm(v2)
+            v1 = v1 / norm_v1
+            v2 = v2 / norm_v2
+            angle = np.degrees(np.arccos(np.clip(np.dot(v1, v2), -1.0, 1.0)))
+            return angle
+
+        angle_disconnt = 100
+        angle_connt_valid = 45
+        angle_connt_invalid = 120
+        dist_threshold = 12
+
+        G = nx.Graph()
         p = index.Property(dimension=3)
         rtree = index.Index(properties=p)
 
-        G = nx.Graph()
-        nid_offset = 0
-        for seg in segs:
-            # points = seg['sampled_points']
-            points = seg['points']
-            if len(points)>=2:
-                # node
-                for idx, coord in enumerate(points):
-                    nid = idx + nid_offset
-                    G.add_node(nid, nid=nid, coord=coord)
-                    rtree.insert(nid, tuple(list(coord) + list(coord)), obj=[nid, coord])
-                # edge
-                for src, tgt in zip(range(0,len(points)-1), range(1,len(points))):
-                    src_nid = src + nid_offset
-                    tgt_nid = tgt + nid_offset
-                    G.add_edge(src_nid, tgt_nid)
-            else:
-                nid = 0 + nid_offset
-                G.add_node(nid, nid=nid, coord=points[0])
-            nid_offset += len(points)
+        nodes = read_nodes(db_path)
+        edges = read_edges(db_path)
+        for node in nodes:
+            G.add_node(node['nid'], nid=node['nid'], coord=node['coord'], creator=node['creator'], status=node['status'], type=node['type'], date=node['date'], checked=node['checked'])
+            rtree.insert(node['nid'], tuple(list(node['coord']) + list(node['coord'])), obj=[node['nid'], node['coord']])
+        for edge in edges:
+            G.add_edge(edge['src'], edge['des'], date=node['date'], creator=edge['creator'])
+
+        # check all path nodes
+        path_nodes = [node for node, degree in G.degree() if degree==2]
+        nodes_invalid = []
+        pbar = tqdm(path_nodes, desc='proofreading')
+        for nid in pbar:
+            if G.degree[nid]!=2:
+                continue
+            nbr_nids = list(G.neighbors(nid))
+            v1 = np.asarray(G.nodes[nbr_nids[0]]['coord']) - np.asarray(G.nodes[nid]['coord'])
+            v2 = np.asarray(G.nodes[nbr_nids[1]]['coord']) - np.asarray(G.nodes[nid]['coord'])
+            angle = _cal_angle(v1, v2)
+            # if invalid
+            if angle < angle_disconnt:
+                G.remove_edge(nid, nbr_nids[0])
+                G.remove_edge(nid, nbr_nids[1])
+                delete_edges(db_path, [[nid, nbr_nids[0]],])
+                delete_edges(db_path, [[nid, nbr_nids[1]],])
+                nodes_invalid.append([nid, angle])
+            pbar.set_description(f'proofreading, num of invalid edges: {len(nodes_invalid)*2}')
         
-        dist_threshold = 12
-        degree_threshold = 40
+        # try to connect end nodes
+        edges_autoConnt = []
         end_nodes = [node for node, degree in G.degree() if degree==1]
-        for end_nid in end_nodes:
+        pbar = tqdm(end_nodes)
+        for end_nid in pbar:
             if G.degree[end_nid]>1:
                 continue
-            curr_path = [end_nid] + [des for src, des in list(nx.dfs_edges(G, end_nid, depth_limit=6))]
+            curr_path = [end_nid] + [des for src, des in list(nx.dfs_edges(G, end_nid, depth_limit=5))]
             curr_coords = np.asarray([G.nodes[nid]['coord'] for nid in curr_path])
             offset = [i-dist_threshold//2 for i in curr_coords[0]]
             roi = offset + [i+dist_threshold for i in offset]
             curr_direction = np.sum(curr_coords[:-1:3] - curr_coords[1::3], axis=0)
-            curr_direction = curr_direction / np.linalg.norm(curr_direction)
 
             nbr_nid_list = set(rtree.intersection(tuple(roi), objects=False)) - set(curr_path)
             nbr_nid_list = [nid for nid in nbr_nid_list if G.degree[nid]==1]
-            matched_nbr = None
-            min_degree = degree_threshold
+            matched_nbr_nid = None
+            min_angle = angle_connt_valid
             for nbr_nid in nbr_nid_list:
-                nbr_path = [nbr_nid] + [des for src, des in list(nx.dfs_edges(G, nbr_nid, depth_limit=6))]
+                nbr_path = [nbr_nid] + [des for src, des in list(nx.dfs_edges(G, nbr_nid, depth_limit=5))]
                 nbr_coords = np.asarray([G.nodes[nid]['coord'] for nid in nbr_path])
                 nbr_direction = np.sum(nbr_coords[1::3] - nbr_coords[:-1:3], axis=0)
-                nbr_direction = nbr_direction / np.linalg.norm(nbr_direction)
 
-                norm = np.linalg.norm(curr_direction)*np.linalg.norm(nbr_direction)
-                degree = np.degrees(np.arccos(np.clip(np.dot(curr_direction, nbr_direction)/norm, -1.0, 1.0)))
-                if degree <= min_degree:
-                    min_degree = degree
-                    matched_nbr = nbr_nid
+                direction_angle = _cal_angle(curr_direction, nbr_direction)
+                connection_angle = min(
+                    _cal_angle(v1=curr_coords[1]-curr_coords[0], v2=nbr_coords[0]-curr_coords[0]),
+                    _cal_angle(v1=nbr_coords[1]-nbr_coords[0], v2=curr_coords[0]-nbr_coords[0]),
+                )
+                # if valid
+                if direction_angle<=min_angle and connection_angle>=angle_connt_invalid:
+                    min_angle = direction_angle
+                    matched_nbr_nid = nbr_nid
 
-            if matched_nbr is not None:
-                G.add_edge(end_nid, matched_nbr)
+            if matched_nbr_nid is not None:
+                G.add_edge(end_nid, matched_nbr_nid)
+                add_edges(db_path, edges=[[end_nid, matched_nbr_nid],], user_name='connector')
+                uncheck_nodes(db_path, [end_nid, matched_nbr_nid])
+                edges_autoConnt.append([end_nid, matched_nbr_nid])
+            pbar.set_description(f'auto connecting, num of auto connected segs: {len(edges_autoConnt)}')
 
-        segments = []
-        connected_components = list(nx.connected_components(G))
-        interval = 3
-        for cc in connected_components:
-            if len(cc)<=interval*2:
-                continue
-            subgraph = G.subgraph(cc).copy()
-            end_nodes = [node for node, degree in subgraph.degree() if degree == 1]
-            if (len(end_nodes)!=2):
-                continue
-            path = nx.shortest_path(subgraph, source=end_nodes[0], target=end_nodes[1], weight=None, method='dijkstra') 
-            # path to segment
-            points = np.array([G.nodes[nid]['coord'] for nid in path]).tolist()
-            sampled_points = points[:-(interval-1):interval]
-            sampled_points.append(points[-1])
-            segments.append(
-                {
-                    'sid' : None,
-                    'points' : points,
-                    'sampled_points' : sampled_points
-                }
-            )
-        return segments
-
-
+        print(f'Remove {len(nodes_invalid)*2} invalid edges.\nAuto Connect {len(edges_autoConnt)} segments.')
+        return nodes_invalid, edges_autoConnt
+                
     def process_whole(self,image_path,level=0,channel=0,chunk_size=300,splice=100000,roi=None,dec=None):
         '''
         cut whole brain image to [300,300,300] cubes without splices (z coordinates % 300 == 0)
@@ -290,7 +296,6 @@ class Seger():
             _, segs_in_block = self.mask_to_segs(mask,offset=offset)
             segs+=segs_in_block
 
-        segs = self.connect_segs(segs)
         for i, seg in enumerate(segs):
             seg['sid'] = i
 
@@ -368,18 +373,21 @@ class SegerGUI(widgets.Container):
 
 
     def on_changing_level(self,event):
-        self.viewer.layers.remove(self.viewer.layers['Shapes']) 
-        x_offset,y_offset,z_offset,x_size,y_size,z_size = self.image.rois[int(self.level.value)]
-        self.x.value = x_offset
-        self.y.value = y_offset
-        self.z.value = z_offset
-        self.x_size.max = x_size
-        self.y_size.max = y_size
-        self.z_size.max = z_size
-        self.x_size.value = x_size
-        self.y_size.value = y_size
-        self.z_size.value = z_size
-        draw_frame(self.image.rois[int(self.level.value)], self.viewer, color='white')
+        if hasattr(self, 'image'):
+            if 'Shapes' in self.viewer.layers:
+                self.viewer.layers.remove(self.viewer.layers['Shapes']) 
+            x_offset,y_offset,z_offset,x_size,y_size,z_size = self.image.rois[int(self.level.value)]
+            self.x.value = x_offset
+            self.y.value = y_offset
+            self.z.value = z_offset
+            self.x_size.max = x_size
+            self.y_size.max = y_size
+            self.z_size.max = z_size
+            self.x_size.value = x_size
+            self.y_size.value = y_size
+            self.z_size.value = z_size
+            if not ('Shapes' in self.viewer.layers):
+                draw_frame(self.image.rois[int(self.level.value)], self.viewer, color='white')
 
 
     def switch_image_type(self,event):
@@ -403,7 +411,7 @@ class SegerGUI(widgets.Container):
         self.x_size.value = x_size
         self.y_size.value = y_size
         self.z_size.value = z_size
-        draw_frame(self.image.rois[0], self.viewer, color='white')
+        draw_frame(self.image.rois[int(self.level.value)], self.viewer, color='white')
 
 
     def load_deconver(self):
@@ -460,8 +468,9 @@ class SegerGUI(widgets.Container):
     def on_segmentation_finished(self, segs):
         db_path = str(self.save_dir.value)
         if db_path != '.':
-            show_info(f"Saving {len(segs)} segments to {db_path}")
             segs2db(segs, db_path)
+            nodes_invalid, edges_autoConnt = self.seger.connect_segs(db_path)
+            show_info(f"Save {len(segs)} segments to {db_path}.\nRemove {len(nodes_invalid)*2} invalid edges.\nAuto Connect {len(edges_autoConnt)} segments.")
 
         seg_points = [seg['sampled_points'] for seg in segs]
         show_segs_as_instances(seg_points, self.viewer)
@@ -498,7 +507,7 @@ class SegerGUI(widgets.Container):
                 if 'tif' in image_path:
                     img = image.from_roi(roi,padding='reflect')
                 else:
-                    img = image.from_roi(roi,0,int(self.channel.value),padding='reflect') 
+                    img = image.from_roi(roi,int(self.level.value),int(self.channel.value),padding='reflect') 
                 if dec is not None:
                     img = dec.process_one(img)
                 mask = self.seger.seg_net.get_mask(img)
@@ -521,7 +530,6 @@ class SegerGUI(widgets.Container):
 
             yield (idx+1, total_rois, segs_in_block)
 
-        segs = self.seger.connect_segs(segs)
         for i, seg in enumerate(segs):
             seg['sid'] = i
 
@@ -561,16 +569,16 @@ def command_line_interface():
 
     if args.db_path is not None:
         segs2db(segs,args.db_path)
-        show_info(f"Saving {len(segs)} segs to {args.db_path}")
-
+        nodes_invalid, edges_autoConnt = seger.connect_segs(args.db_path)
+        show_info(f"Save {len(segs)} segments to {args.db_path}.\nRemove {len(nodes_invalid)*2} invalid edges.\nAuto Connect {len(edges_autoConnt)} segments.")
 
     if args.vis:
         import napari
         viewer = napari.Viewer(ndisplay=3)
         image = wrap_image(args.image_path)
         if args.roi is None:
-            args.roi = image.roi
-        if (np.array(args.roi[3:])<np.array([1024,1024,1024])).all():
+            args.roi = image.rois[args.level]
+        if (np.array(args.roi[3:])<=np.array([1024,1024,1024])).all():
             if 'tif' in args.image_path:
                 img = image.from_roi(args.roi,padding='reflect')
             else:
