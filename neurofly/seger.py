@@ -398,7 +398,7 @@ class SegerGUI(widgets.Container):
 
 
     def on_image_reading(self):
-        if 'ims' not in str(self.image_path.value):
+        if 'ims' in str(self.image_path.value):
             return
         self.image = wrap_image(str(self.image_path.value))
         x_offset,y_offset,z_offset,x_size,y_size,z_size = self.image.rois[int(self.level.value)]
