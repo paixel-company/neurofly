@@ -12,24 +12,28 @@ class ROIViewer(widgets.Container):
         self.viewer = viewer
         self.viewer.layers.clear()
         
-        # 创建显示ROI图像的 layer
-        self.roi_image_layer = self.viewer.add_image(np.zeros((10,10,10)), name="ROI Image", visible=True)
-        # 创建显示标注点的 layer
-        self.roi_points_layer = self.viewer.add_points(np.empty((0, 3)), name="ROI Points", visible=True)
+        # Create an Image layer for the ROI
+        self.roi_image_layer = self.viewer.add_image(
+            np.zeros((10, 10, 10)), name="ROI Image", visible=True
+        )
+        # Create a Points layer for annotations
+        self.roi_points_layer = self.viewer.add_points(
+            np.empty((0, 3)), name="ROI Points", visible=True
+        )
         
-        # 文件路径输入控件（注意：FileEdit 可能返回的是 Path 对象）
+        # File input widgets (note that FileEdit may return a Path object)
         self.image_path = widgets.FileEdit(label="Image Path", mode="r")
         self.db_path = widgets.FileEdit(label="DB Path", filter="*.db")
         
-        # ROI 参数输入控件：ROI 起点（左下角坐标）和 ROI 尺寸
+        # ROI parameters: origin (lower-left corner) and size
         self.roi_origin = widgets.LineEdit(label="ROI Origin (x,y,z)", value="6047,4189,11275")
         self.roi_size = widgets.LineEdit(label="ROI Size (x,y,z)", value="1024,1024,1024")
         
-        # 按钮：加载 ROI
+        # Button to load the ROI
         self.load_roi_button = widgets.PushButton(text="Load ROI")
         self.load_roi_button.clicked.connect(self.load_roi)
         
-        # 将所有控件加入容器
+        # Add all widgets to the container
         self.extend([
             self.image_path,
             self.db_path,
@@ -40,88 +44,94 @@ class ROIViewer(widgets.Container):
     
     def parse_coordinates(self, text):
         """
-        解析类似 "6047,4189,11275" 或 "6047 4189 11275" 格式的字符串为整数列表
+        Parse a string like "6047,4189,11275" or "6047 4189 11275" into a list of integers.
         """
         parts = text.replace(",", " ").split()
         try:
             coords = [int(x) for x in parts]
             return coords
         except ValueError:
-            show_info("输入的坐标格式不正确，请以逗号或空格分隔整数。")
+            show_info("Invalid coordinate format. Please separate integers with commas or spaces.")
             return None
     
     def load_roi(self):
         """
-        根据用户输入的 ROI 起点和尺寸提取图像块，并在 ROI Points layer 显示该区域内的标注点
+        Extract the ROI specified by the user and display its annotation points.
         """
         origin = self.parse_coordinates(self.roi_origin.value)
         size = self.parse_coordinates(self.roi_size.value)
         if origin is None or size is None:
             return
         
-        # ROI 起点需为3个数，ROI 尺寸支持1个数（立方体）或3个数
+        # ROI origin must have 3 values, ROI size must be either 1 or 3 values
         if len(origin) != 3 or len(size) not in (1, 3):
-            show_info("ROI 起点必须为3个数，ROI 尺寸必须为1个或3个数。")
+            show_info("ROI origin must have 3 values, and ROI size must be either 1 or 3 values.")
             return
         
+        # If only one dimension is provided for size, expand it to (x, y, z)
         if len(size) == 1:
-            size = size * 3  # 如果只输入一个尺寸，则在三个方向都取相同值
+            size = size * 3
         
-        # 计算 ROI 的上界（逐元素相加）
+        # Calculate the upper bounds of the ROI
         roi_bounds = [o + s for o, s in zip(origin, size)]
-        # 构造 ROI 参数：[origin_x, origin_y, origin_z, size_x, size_y, size_z]
+        # Build the ROI parameter: [origin_x, origin_y, origin_z, size_x, size_y, size_z]
         roi_param = origin + size
         
-        # 将可能的 Path 对象转为字符串
+        # Convert the FileEdit (possibly Path) to a string
         image_path_str = str(self.image_path.value)
         db_path_str = str(self.db_path.value)
         
-        # 加载图像
+        # Check if the image path exists
         if not os.path.exists(image_path_str):
-            show_info("图像路径不存在。")
+            show_info("Image path does not exist.")
             return
+        
+        # Wrap the image
         try:
             image = wrap_image(image_path_str)
         except Exception as e:
-            show_info(f"加载图像出错: {e}")
+            show_info(f"Error loading image: {e}")
             return
         
-        # 这里简单采用 level=0, channel=0
+        # For simplicity, use level=0 and channel=0
         level = 0
         channel = 0
         
+        # Extract the ROI
         try:
             roi_image = image.from_roi(roi_param, level=level, channel=channel)
         except Exception as e:
-            show_info(f"提取 ROI 图像块出错: {e}")
+            show_info(f"Error extracting ROI image: {e}")
             return
         
-        # 更新图像 layer
+        # Update the Image layer
         self.roi_image_layer.data = roi_image
         self.roi_image_layer.reset_contrast_limits()
         
-        # 从数据库加载标注点，并过滤出在 ROI 内的点
+        # Load annotation points from the database, if it exists
         if os.path.exists(db_path_str):
             try:
                 nodes = read_nodes(db_path_str)
             except Exception as e:
-                show_info(f"读取数据库出错: {e}")
+                show_info(f"Error reading database: {e}")
                 return
+            
             points = []
             for node in nodes:
                 coord = node['coord']
-                # 判断该点是否在 ROI 区域内
+                # Check if the point is within the ROI bounds
                 if all(o <= c < b for o, c, b in zip(origin, coord, roi_bounds)):
                     points.append(coord)
+            
             if points:
                 self.roi_points_layer.data = np.array(points)
             else:
                 self.roi_points_layer.data = np.empty((0, 3))
-                show_info("指定 ROI 内没有找到标注点。")
+                show_info("No annotation points found in the specified ROI.")
         else:
-            show_info("数据库路径不存在，未加载标注点。")
+            show_info("Database path does not exist. No annotation points loaded.")
             self.roi_points_layer.data = np.empty((0, 3))
         
-        # 调整摄像头视图，使中心位于 ROI 中心
+        # Adjust the camera view to center on the ROI
         self.viewer.camera.center = [o + s / 2 for o, s in zip(origin, size)]
-        show_info("ROI 加载成功。")
+        show_info("ROI loaded successfully.")
