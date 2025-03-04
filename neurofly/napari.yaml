@@ -18,6 +18,9 @@ contributions:
     - id: neurofly.roi_viewer
       title: ROI Viewer
       python_name: neurofly:ROIViewer
+    - id: neurofly.db_roi_viewer
+      title: Db ROI Viewer
+      python_name: neurofly:DbROIViewer
   widgets:
     - command: neurofly.segs_annotator
       display_name: Segs Annotator
@@ -29,3 +32,5 @@ contributions:
       display_name: Neuron Seger
     - command: neurofly.roi_viewer
       display_name: ROI Viewer
+    - command: neurofly.db_roi_viewer
+      display_name: Db ROI Viewer
