@@ -17,7 +17,7 @@ class ROIViewer(widgets.Container):
         # 创建显示标注点的 layer
         self.roi_points_layer = self.viewer.add_points(np.empty((0, 3)), name="ROI Points", visible=True)
         
-        # 文件路径输入控件
+        # 文件路径输入控件（注意：FileEdit 可能返回的是 Path 对象）
         self.image_path = widgets.FileEdit(label="Image Path", mode="r")
         self.db_path = widgets.FileEdit(label="DB Path", filter="*.db")
         
@@ -29,7 +29,7 @@ class ROIViewer(widgets.Container):
         self.load_roi_button = widgets.PushButton(text="Load ROI")
         self.load_roi_button.clicked.connect(self.load_roi)
         
-        # 添加控件到容器
+        # 将所有控件加入容器
         self.extend([
             self.image_path,
             self.db_path,
@@ -72,12 +72,16 @@ class ROIViewer(widgets.Container):
         # 构造 ROI 参数：[origin_x, origin_y, origin_z, size_x, size_y, size_z]
         roi_param = origin + size
         
+        # 将可能的 Path 对象转为字符串
+        image_path_str = str(self.image_path.value)
+        db_path_str = str(self.db_path.value)
+        
         # 加载图像
-        if not os.path.exists(self.image_path.value):
+        if not os.path.exists(image_path_str):
             show_info("图像路径不存在。")
             return
         try:
-            image = wrap_image(self.image_path.value)
+            image = wrap_image(image_path_str)
         except Exception as e:
             show_info(f"加载图像出错: {e}")
             return
@@ -97,9 +101,9 @@ class ROIViewer(widgets.Container):
         self.roi_image_layer.reset_contrast_limits()
         
         # 从数据库加载标注点，并过滤出在 ROI 内的点
-        if os.path.exists(self.db_path.value):
+        if os.path.exists(db_path_str):
             try:
-                nodes = read_nodes(self.db_path.value)
+                nodes = read_nodes(db_path_str)
             except Exception as e:
                 show_info(f"读取数据库出错: {e}")
                 return
