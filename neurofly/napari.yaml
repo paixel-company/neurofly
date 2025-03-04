@@ -15,6 +15,9 @@ contributions:
     - id: neurofly.neuron_seger
       title: Neuron Seger
       python_name: neurofly:NeuronSeger
+    - id: neurofly.roi_viewer
+      title: ROI Viewer
+      python_name: neurofly:ROIViewer
   widgets:
     - command: neurofly.segs_annotator
       display_name: Segs Annotator
@@ -24,3 +27,5 @@ contributions:
       display_name: Skeleton Annotator
     - command: neurofly.neuron_seger
       display_name: Neuron Seger
+    - command: neurofly.roi_viewer
+      display_name: ROI Viewer
