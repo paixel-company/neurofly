@@ -25,8 +25,6 @@ class DbROIViewer(widgets.Container):
     def __init__(self, viewer: napari.Viewer):
         super().__init__()
         self.viewer = viewer
-        self.viewer.layers.clear()
-        self.viewer.window.remove_dock_widget('all')
 
         self.G = None
         self.rtree = None
